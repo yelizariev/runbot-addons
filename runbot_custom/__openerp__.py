@@ -8,6 +8,7 @@
         'runbot',
     ],
     'data': [
+        'views.xml',
     ],
     'installable': True
 }

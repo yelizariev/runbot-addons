@@ -1,13 +1,28 @@
+import os
 import re
+import glob
+import logging
+import shutil
 
 from openerp.osv import orm, fields
+from openerp.addons.runbot.runbot import mkdirs, uniq_list
+
+_logger = logging.getLogger(__name__)
 
 MAGIC_PID_RUN_NEXT_JOB = -2
+
 
 class runbot_repo(orm.Model):
     _inherit = "runbot.repo"
 
+    def _get_base(self, cr, uid, ids, field_name, arg, context=None):
+        result = super(runbot_repo, self)._get_base(cr, uid, ids, field_name, arg, context)
+        for id in result:
+            result[id] = result[id].replace('https///', '')
+        return result
+
     _columns = {
+        'base': fields.function(_get_base, type='char', string='Base URL', readonly=1),
         'is_addons_dev': fields.boolean('addons-dev'),
         'install_updated_modules': fields.boolean('Install updated modules'),
     }
@@ -30,7 +45,8 @@ class runbot_branch(orm.Model):
             files = self._get_pull_files(cr, uid, [bid], context=context)
             if files:
                 files = [f['raw_url'] for f in files]
-                updated_modules = set([f[7] for f in files])
+                files = [f.split('/') for f in files]
+                updated_modules = set([f[7] for f in files if len(f) > 8])
                 r[bid] = ','.join(updated_modules)
         return r
 
@@ -51,12 +67,6 @@ class runbot_branch(orm.Model):
 class runbot_build(orm.Model):
     _inherit = "runbot.build"
 
-    _columns = {
-        'updated_modules': fields.text('Updated modules', readonly=True),
-        'source_branch_name': fields.char('Source Branch Name', readonly=True),
-        'target_branch_name': fields.char('Target Branch Name', readonly=True),
-    }
-
     def sub_cmd(self, build, cmd):
         cmd = super(runbot_build, self).sub_cmd(build, cmd)
         internal_vals = {
@@ -71,6 +81,7 @@ class runbot_build(orm.Model):
 
     def job_20_test_all(self, cr, uid, build, lock_path, log_path):
         _logger.info('skipping job_20_test_all')
+        os.system('echo skipping job_20_test_all >> %s' % log_path)
         return MAGIC_PID_RUN_NEXT_JOB
 
     def checkout(self, cr, uid, ids, context=None):
@@ -118,7 +129,7 @@ class runbot_build(orm.Model):
                         except:
                             pass
                         if repo_name and build.repo_id.name.endswith('%s.git' % repo_name):
-                            # ignore repo as all modules are already in branch
+                            _logger.debug('ignore repo "%s" as all modules are already in branch' % repo_name)
                             continue
                     repo_id, closest_name, server_match = build._get_closest_branch_name(extra_repo.id)
                     repo = self.pool['runbot.repo'].browse(cr, uid, repo_id, context=context)
@@ -149,8 +160,9 @@ class runbot_build(orm.Model):
                 modules_to_test += available_modules
 
             if build.repo_id.install_updated_modules:
-                if build.branch_id.updated_modules:
-                    modules_to_test += build.branch_id.updated_modules.split(',')
+                updated_modules = build.branch_id.updated_modules
+                if updated_modules:
+                    modules_to_test += updated_modules.split(',')
 
             modules_to_test = self.filter_modules(cr, uid, modules_to_test,
                                                   set(available_modules), explicit_modules)

@@ -1,3 +1,5 @@
+import re
+
 from openerp.osv import orm, fields
 
 MAGIC_PID_RUN_NEXT_JOB = -2
@@ -7,6 +9,7 @@ class runbot_repo(orm.Model):
 
     _columns = {
         'is_addons_dev': fields.boolean('addons-dev'),
+        'install_updated_modules': fields.boolean('Install updated modules'),
     }
 
 class runbot_branch(orm.Model):
@@ -18,8 +21,18 @@ class runbot_branch(orm.Model):
         repo = branch.repo_id
         if repo.token and branch.name.startswith('refs/pull/'):
             pull_number = branch.name[len('refs/pull/'):]
-            return repo.github('/repos/:owner/:repo/pulls/%s/files' % pull_number, ignore_errors=True) or {}
-        return {}
+            return repo.github('/repos/:owner/:repo/pulls/%s/files' % pull_number, ignore_errors=True) or []
+        return []
+
+    def _get_updated_modules(self, cr, uid, ids, field_name, arg, context=None):
+        r = dict.fromkeys(ids, False)
+        for bid in ids:
+            files = self._get_pull_files(cr, uid, [bid], context=context)
+            if files:
+                files = [f['raw_url'] for f in files]
+                updated_modules = set([f[7] for f in files])
+                r[bid] = ','.join(updated_modules)
+        return r
 
     def _get_pull_base_name(self, cr, uid, ids, field_name, arg, context=None):
         r = dict.fromkeys(ids, False)
@@ -31,6 +44,7 @@ class runbot_branch(orm.Model):
 
     _columns = {
         'pull_base_name': fields.function(_get_pull_base_name, type='char', string='PR Base name', readonly=1, store=True),
+        'updated_modules': fields.function(_get_updated_modules, type='char', string='Updated modules', help='Comma-separated list of updated modules (for PR)', readonly=1, store=False),
     }
 
 
@@ -95,6 +109,17 @@ class runbot_build(orm.Model):
                     _logger.debug("local modules_to_test for build %s: %s", build.dest, modules_to_test)
 
                 for extra_repo in build.repo_id.dependency_ids:
+                    if build.repo_id.is_addons_dev:
+                        # addons-yelizariev-9.0-some-feature -> addons-yelizariev
+                        repo_name = None
+                        try:
+                            repo_name = re.match('([^0-9]*)-', build.branch_id.pull_head_name).group(1)
+
+                        except:
+                            pass
+                        if repo_name and build.repo_id.name.endswith('%s.git' % repo_name):
+                            # ignore repo as all modules are already in branch
+                            continue
                     repo_id, closest_name, server_match = build._get_closest_branch_name(extra_repo.id)
                     repo = self.pool['runbot.repo'].browse(cr, uid, repo_id, context=context)
                     repo.git_export(closest_name, build.path())
@@ -122,6 +147,10 @@ class runbot_build(orm.Model):
             ]
             if build.repo_id.modules_auto == 'all' or (build.repo_id.modules_auto != 'none' and has_server):
                 modules_to_test += available_modules
+
+            if build.repo_id.install_updated_modules:
+                if build.branch_id.updated_modules:
+                    modules_to_test += build.branch_id.updated_modules.split(',')
 
             modules_to_test = self.filter_modules(cr, uid, modules_to_test,
                                                   set(available_modules), explicit_modules)

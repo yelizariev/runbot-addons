@@ -3,6 +3,8 @@ import re
 import glob
 import logging
 import shutil
+import subprocess
+import operator
 
 import openerp
 from openerp.osv import orm, fields
@@ -27,6 +29,7 @@ class runbot_repo(orm.Model):
         'is_addons_dev': fields.boolean('addons-dev'),
         'install_updated_modules': fields.boolean('Install updated modules'),
     }
+
 
 class runbot_branch(orm.Model):
     _inherit = "runbot.branch"
@@ -135,8 +138,9 @@ class runbot_build(orm.Model):
 
                         except:
                             pass
-                        if repo_name and build.repo_id.name.endswith('%s.git' % repo_name):
-                            _logger.debug('ignore repo "%s" as all modules are already in branch' % repo_name)
+
+                        if repo_name and extra_repo.name.endswith('%s.git' % repo_name):
+                            _logger.debug('ignore repo "%s" as all modules are already in addons-dev branch' % repo_name)
                             continue
                     repo_id, closest_name, server_match = build._get_closest_branch_name(extra_repo.id)
                     repo = self.pool['runbot.repo'].browse(cr, uid, repo_id, context=context)
@@ -177,7 +181,6 @@ class runbot_build(orm.Model):
             build.write({'server_match': server_match,
                          'modules': ','.join(modules_to_test)})
 
-
     def _get_closest_branch_name(self, cr, uid, ids, target_repo_id, context=None):
         """Return (repo, branch name) of the closest common branch between build's branch and
            any branch of target_repo or its duplicated repos.
@@ -197,6 +200,10 @@ class runbot_build(orm.Model):
         branch, repo = build.branch_id, build.repo_id
         pi = branch._get_pull_info()
         name = pi['base']['ref'] if pi else branch.branch_name
+        if build.repo_id.is_addons_dev:
+            m = re.search('-([0-9]+\.[0-9]+)-', name)
+            if m:
+                name = m.group(1)
 
         target_repo = self.pool['runbot.repo'].browse(cr, uid, target_repo_id, context=context)
 

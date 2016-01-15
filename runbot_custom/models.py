@@ -4,8 +4,9 @@ import glob
 import logging
 import shutil
 
+import openerp
 from openerp.osv import orm, fields
-from openerp.addons.runbot.runbot import mkdirs, uniq_list
+from openerp.addons.runbot.runbot import mkdirs, uniq_list, now
 
 _logger = logging.getLogger(__name__)
 
@@ -67,6 +68,11 @@ class runbot_branch(orm.Model):
 class runbot_build(orm.Model):
     _inherit = "runbot.build"
 
+    def _get_closest_branch_name(self, cr, uid, ids, target_repo_id, context=None):
+        repo_id, closest_name, server_match = super(runbot_build, self)._get_closest_branch_name(cr, uid, ids, target_repo_id, context)
+        _logger.info('_get_closest_branch_name for target_repo_id=%s: %s' % (target_repo_id, [repo_id, closest_name, server_match]))
+        return repo_id, closest_name, server_match
+
     def sub_cmd(self, build, cmd):
         cmd = super(runbot_build, self).sub_cmd(build, cmd)
         internal_vals = {
@@ -80,12 +86,15 @@ class runbot_build(orm.Model):
         return MAGIC_PID_RUN_NEXT_JOB
 
     def job_20_test_all(self, cr, uid, build, lock_path, log_path):
-        _logger.info('custom job_20_test_all')
+        _logger.info('custom job_20_test_all (install updated modules)')
         self.pg_createdb(cr, uid, "%s-all" % build.dest)
-        with open(log_path, 'w') as f:
-            f.write('consider tests as passed: '
-                    '.modules.loading: Modules loaded.')
-        return MAGIC_PID_RUN_NEXT_JOB
+        cmd, mods = build.cmd()
+        #if grep(build.server("tools/config.py"), "test-enable"):
+        #    cmd.append("--test-enable")
+        cmd += ['-d', '%s-all' % build.dest, '-i', openerp.tools.ustr(mods), '--stop-after-init', '--log-level=test', '--max-cron-threads=0']
+        # reset job_start to an accurate job_20 job_time
+        build.write({'job_start': now()})
+        return self.spawn(cmd, lock_path, log_path, cpu_limit=2100)
 
     def checkout(self, cr, uid, ids, context=None):
         for build in self.browse(cr, uid, ids, context=context):

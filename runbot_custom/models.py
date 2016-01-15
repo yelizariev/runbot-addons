@@ -68,11 +68,6 @@ class runbot_branch(orm.Model):
 class runbot_build(orm.Model):
     _inherit = "runbot.build"
 
-    def _get_closest_branch_name(self, cr, uid, ids, target_repo_id, context=None):
-        repo_id, closest_name, server_match = super(runbot_build, self)._get_closest_branch_name(cr, uid, ids, target_repo_id, context)
-        _logger.info('_get_closest_branch_name for target_repo_id=%s: %s' % (target_repo_id, [repo_id, closest_name, server_match]))
-        return repo_id, closest_name, server_match
-
     def sub_cmd(self, build, cmd):
         cmd = super(runbot_build, self).sub_cmd(build, cmd)
         internal_vals = {
@@ -181,3 +176,104 @@ class runbot_build(orm.Model):
             _logger.debug("modules_to_test for build %s: %s", build.dest, modules_to_test)
             build.write({'server_match': server_match,
                          'modules': ','.join(modules_to_test)})
+
+
+    def _get_closest_branch_name(self, cr, uid, ids, target_repo_id, context=None):
+        """Return (repo, branch name) of the closest common branch between build's branch and
+           any branch of target_repo or its duplicated repos.
+
+        Rules priority for choosing the branch from the other repo is:
+        1. Same branch name
+        2. A PR whose head name match
+        3. Match a branch which is the dashed-prefix of current branch name
+        4. Common ancestors (git merge-base)
+        Note that PR numbers are replaced by the branch name of the PR target
+        to prevent the above rules to mistakenly link PR of different repos together.
+        """
+        assert len(ids) == 1
+        branch_pool = self.pool['runbot.branch']
+
+        build = self.browse(cr, uid, ids[0], context=context)
+        branch, repo = build.branch_id, build.repo_id
+        pi = branch._get_pull_info()
+        name = pi['base']['ref'] if pi else branch.branch_name
+
+        target_repo = self.pool['runbot.repo'].browse(cr, uid, target_repo_id, context=context)
+
+        target_repo_ids = [target_repo.id]
+        r = target_repo.duplicate_id
+        while r:
+            if r.id in target_repo_ids:
+                break
+            target_repo_ids.append(r.id)
+            r = r.duplicate_id
+
+        sort_by_repo = lambda d: (target_repo_ids.index(d['repo_id'][0]), -1 * len(d.get('branch_name', '')), -1 * d['id'])
+        result_for = lambda d: (d['repo_id'][0], d['name'], 'exact')
+
+        # 1. same name, not a PR
+        domain = [
+            ('repo_id', 'in', target_repo_ids),
+            ('branch_name', '=', name),
+            ('name', '=like', 'refs/heads/%'),
+        ]
+        targets = branch_pool.search_read(cr, uid, domain, ['name', 'repo_id'], order='id DESC',
+                                          context=context)
+        targets = sorted(targets, key=sort_by_repo)
+        if targets:
+            return result_for(targets[0])
+
+        # 2. PR with head name equals
+        domain = [
+            ('repo_id', 'in', target_repo_ids),
+            ('pull_head_name', '=', name),
+            ('name', '=like', 'refs/pull/%'),
+        ]
+        pulls = branch_pool.search_read(cr, uid, domain, ['name', 'repo_id'], order='id DESC',
+                                        context=context)
+        pulls = sorted(pulls, key=sort_by_repo)
+        for pull in pulls:
+            pi = branch_pool._get_pull_info(cr, uid, [pull['id']], context=context)
+            if pi.get('state') == 'open':
+                return result_for(pull)
+
+        # 3. Match a branch which is the dashed-prefix of current branch name
+        branches = branch_pool.search_read(
+            cr, uid,
+            [('repo_id', 'in', target_repo_ids), ('name', '=like', 'refs/heads/%')],
+            ['name', 'branch_name', 'repo_id'], order='id DESC', context=context
+        )
+        branches = sorted(branches, key=sort_by_repo)
+
+        for branch in branches:
+            if name.startswith(branch['branch_name'] + '-'):
+                return result_for(branch)
+
+        # 4. Common ancestors (git merge-base)
+        for target_id in target_repo_ids:
+            common_refs = {}
+            cr.execute("""
+                SELECT b.name
+                  FROM runbot_branch b,
+                       runbot_branch t
+                 WHERE b.repo_id = %s
+                   AND t.repo_id = %s
+                   AND b.name = t.name
+                   AND b.name LIKE 'refs/heads/%%'
+            """, [repo.id, target_id])
+            for common_name, in cr.fetchall():
+                try:
+                    commit = repo.git(['merge-base', branch['name'], common_name]).strip()
+                    cmd = ['log', '-1', '--format=%cd', '--date=iso', commit]
+                    common_refs[common_name] = repo.git(cmd).strip()
+                except subprocess.CalledProcessError:
+                    # If merge-base doesn't find any common ancestor, the command exits with a
+                    # non-zero return code, resulting in subprocess.check_output raising this
+                    # exception. We ignore this branch as there is no common ref between us.
+                    continue
+            if common_refs:
+                b = sorted(common_refs.iteritems(), key=operator.itemgetter(1), reverse=True)[0][0]
+                return target_id, b, 'fuzzy'
+
+        # 5. last-resort value
+        return target_repo_id, 'master', 'default'

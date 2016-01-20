@@ -85,7 +85,7 @@ class runbot_build(orm.Model):
 
     def job_20_test_all(self, cr, uid, build, lock_path, log_path):
         _logger.info('custom job_20_test_all (install updated modules)')
-        self.pg_createdb(cr, uid, "%s-all" % build.dest)
+        self._local_pg_createdb(cr, uid, "%s-all" % build.dest)
         cmd, mods = build.cmd()
         #if grep(build.server("tools/config.py"), "test-enable"):
         #    cmd.append("--test-enable")

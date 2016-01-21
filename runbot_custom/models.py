@@ -154,7 +154,7 @@ class runbot_build(orm.Model):
                         extra_repo_name = '/'.join(extra_repo_name.split('.')[-2].split('/')[-2:])
                     except:
                         pass
-                    build._log('checkout', 'closest branch for %s is %s' % (closest_name))
+                    build._log('checkout', 'closest branch for %s is %s' % (extra_repo_name, closest_name))
                     repo = self.pool['runbot.repo'].browse(cr, uid, repo_id, context=context)
                     repo.git_export(closest_name, build.path())
 

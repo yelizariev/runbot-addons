@@ -86,11 +86,11 @@ class runbot_build(orm.Model):
         return [i % internal_vals for i in cmd]
 
     def job_10_test_base(self, cr, uid, build, lock_path, log_path):
-        _logger.info('skipping job_10_test_base')
+        build._log('init', 'skipping test_base')
         return MAGIC_PID_RUN_NEXT_JOB
 
     def job_20_test_all(self, cr, uid, build, lock_path, log_path):
-        _logger.info('custom job_20_test_all (install updated modules)')
+        build._log('custom job_20_test_all (install updated modules)')
         self._local_pg_createdb(cr, uid, "%s-all" % build.dest)
         cmd, mods = build.cmd()
         #if grep(build.server("tools/config.py"), "test-enable"):

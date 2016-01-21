@@ -167,9 +167,6 @@ class runbot_build(orm.Model):
                     shutil.rmtree(build.server('addons', basename))
                 shutil.move(module, build.server('addons'))
 
-            # mark l10n_multilang as autoinstall to load demo data successfully
-            os.system("sed -i \"s/'auto_install': False/'auto_install': True/\" %s" % build.server('addons/l10n_multilang/__openerp__.py'))
-
             available_modules = [
                 os.path.basename(os.path.dirname(a))
                 for a in glob.glob(build.server('addons/*/__openerp__.py'))

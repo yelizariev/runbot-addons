@@ -9,7 +9,7 @@ import time
 
 import openerp
 from openerp.osv import orm, fields
-from openerp.addons.runbot.runbot import mkdirs, uniq_list, now
+from openerp.addons.runbot.runbot import mkdirs, uniq_list, now, grep
 
 _logger = logging.getLogger(__name__)
 

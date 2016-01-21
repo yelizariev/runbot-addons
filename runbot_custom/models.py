@@ -5,6 +5,7 @@ import logging
 import shutil
 import subprocess
 import operator
+import time
 
 import openerp
 from openerp.osv import orm, fields
@@ -29,6 +30,11 @@ class runbot_repo(orm.Model):
         'is_addons_dev': fields.boolean('addons-dev'),
         'install_updated_modules': fields.boolean('Install updated modules'),
     }
+
+    def github(self, cr, uid, ids, url, payload=None, ignore_errors=False, context=None):
+        _logger.info('sleep before request')
+        time.sleep(1)
+        return super(runbot_repo, self).github(cr, uid, ids, url, payload=payload, ignore_errors=ignore_errors, context=context)
 
 
 class runbot_branch(orm.Model):

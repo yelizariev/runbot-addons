@@ -69,7 +69,7 @@ class runbot_branch(orm.Model):
         return r
 
     _columns = {
-        'pull_base_name': fields.function(_get_pull_base_name, type='char', string='PR Base name', readonly=1, store=True),
+        #'pull_base_name': fields.function(_get_pull_base_name, type='char', string='PR Base name', readonly=1, store=True),
         'updated_modules': fields.function(_get_updated_modules, type='char', string='Updated modules', help='Comma-separated list of updated modules (for PR)', readonly=1, store=False),
     }
 
@@ -166,6 +166,9 @@ class runbot_build(orm.Model):
                     )
                     shutil.rmtree(build.server('addons', basename))
                 shutil.move(module, build.server('addons'))
+
+            # mark l10n_multilang as autoinstall to load demo data successfully
+            os.system("sed -i \"s/'auto_install': False/'auto_install': True/\" %s" % build.server('addons/l10n_multilang/__openerp__.py'))
 
             available_modules = [
                 os.path.basename(os.path.dirname(a))
@@ -298,4 +301,5 @@ class runbot_build(orm.Model):
                 build.path('openerp/addons')
             ])
             cmd += ['--addons-path', addons_path]
+
         return cmd, modules

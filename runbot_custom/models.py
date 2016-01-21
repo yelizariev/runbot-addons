@@ -149,6 +149,12 @@ class runbot_build(orm.Model):
                             _logger.debug('ignore repo "%s" as all modules are already in addons-dev branch' % repo_name)
                             continue
                     repo_id, closest_name, server_match = build._get_closest_branch_name(extra_repo.id)
+                    extra_repo_name = extra_repo.name
+                    try:
+                        extra_repo_name = '/'.join(extra_repo_name.split('.')[-2].split('/')[-2:])
+                    except:
+                        pass
+                    build._log('checkout', 'closest branch for %s is %s' % (closest_name))
                     repo = self.pool['runbot.repo'].browse(cr, uid, repo_id, context=context)
                     repo.git_export(closest_name, build.path())
 
@@ -184,6 +190,7 @@ class runbot_build(orm.Model):
             modules_to_test = self.filter_modules(cr, uid, modules_to_test,
                                                   set(available_modules), explicit_modules)
             _logger.debug("modules_to_test for build %s: %s", build.dest, modules_to_test)
+            build._log('checkout', 'modules to install: %s' % modules_to_test) 
             build.write({'server_match': server_match,
                          'modules': ','.join(modules_to_test)})
 

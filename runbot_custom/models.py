@@ -289,3 +289,13 @@ class runbot_build(orm.Model):
 
         # 5. last-resort value
         return target_repo_id, 'master', 'default'
+
+    def cmd(self, cr, uid, ids, context=None):
+        cmd, modules = super(runbot_build, self).cmd(cr, uid, ids, context=context)
+        for build in self.browse(cr, uid, ids, context=context):
+            # add addons path in order to ignore runbot config
+            addons_path = ','.join([
+                build.path('openerp/addons')
+            ])
+            cmd += ['--addons-path', addons_path]
+        return cmd, modules

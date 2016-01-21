@@ -77,14 +77,6 @@ class runbot_branch(orm.Model):
 class runbot_build(orm.Model):
     _inherit = "runbot.build"
 
-    def sub_cmd(self, build, cmd):
-        cmd = super(runbot_build, self).sub_cmd(build, cmd)
-        internal_vals = {
-            'pull_base_name': build.build_id.pull_base_name or '',
-            'pull_head_name': build.build_id.pull_head_name or '',
-        }
-        return [i % internal_vals for i in cmd]
-
     def job_10_test_base(self, cr, uid, build, lock_path, log_path):
         build._log('test_base', 'skipping test_base')
         return MAGIC_PID_RUN_NEXT_JOB

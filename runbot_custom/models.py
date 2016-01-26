@@ -303,3 +303,7 @@ class runbot_build(orm.Model):
             modules = 'base'
 
         return cmd, modules
+
+    def _local_pg_dropdb(self, cr, uid, dbname):
+        openerp.service.db._drop_conn(cr, dbname)
+        super(runbot_build, self)._local_pg_dropdb(cr, uid, dbname)

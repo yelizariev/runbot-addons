@@ -299,4 +299,7 @@ class runbot_build(orm.Model):
             ])
             cmd += ['--addons-path', addons_path]
 
+        if not modules:
+            modules = 'base'
+
         return cmd, modules

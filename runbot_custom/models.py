@@ -328,7 +328,7 @@ class runbot_build(orm.Model):
                     'job_end': False,
                 }
                 build.write(values)
-                cr.commit()
+                #cr.commit()
             else:
                 # check if current job is finished
                 lock_path = build.path('logs', '%s.lock' % build.job)

@@ -307,3 +307,74 @@ class runbot_build(orm.Model):
     def _local_pg_dropdb(self, cr, uid, dbname):
         openerp.service.db._drop_conn(cr, dbname)
         super(runbot_build, self)._local_pg_dropdb(cr, uid, dbname)
+
+    def schedule(self, cr, uid, ids, context=None):
+        jobs = self.list_jobs()
+
+        icp = self.pool['ir.config_parameter']
+        # For retro-compatibility, keep this parameter in seconds
+        default_timeout = int(icp.get_param(cr, uid, 'runbot.timeout', default=1800)) / 60
+
+        for build in self.browse(cr, uid, ids, context=context):
+            if build.state == 'pending':
+                # allocate port and schedule first job
+                port = self.find_port(cr, uid)
+                values = {
+                    'host': fqdn(),
+                    'port': port,
+                    'state': 'testing',
+                    'job': jobs[0],
+                    'job_start': now(),
+                    'job_end': False,
+                }
+                build.write(values)
+                cr.commit()
+            else:
+                # check if current job is finished
+                lock_path = build.path('logs', '%s.lock' % build.job)
+                if locked(lock_path):
+                    # kill if overpassed
+                    timeout = (build.branch_id.job_timeout or default_timeout) * 60
+                    if build.job != jobs[-1] and build.job_time > timeout:
+                        build.logger('%s time exceded (%ss)', build.job, build.job_time)
+                        build.kill(result='killed')
+                    continue
+                build.logger('%s finished', build.job)
+                # schedule
+                v = {}
+                # testing -> running
+                if build.job == jobs[-2]:
+                    v['state'] = 'running'
+                    v['job'] = jobs[-1]
+                    v['job_end'] = now(),
+                # running -> done
+                elif build.job == jobs[-1]:
+                    v['state'] = 'done'
+                    v['job'] = ''
+                # testing
+                else:
+                    v['job'] = jobs[jobs.index(build.job) + 1]
+                build.write(v)
+            build.refresh()
+
+            # run job
+            pid = None
+            if build.state != 'done':
+                build.logger('running %s', build.job)
+                job_method = getattr(self,build.job)
+                mkdirs([build.path('logs')])
+                lock_path = build.path('logs', '%s.lock' % build.job)
+                log_path = build.path('logs', '%s.txt' % build.job)
+                pid = job_method(cr, uid, build, lock_path, log_path)
+                build.write({'pid': pid})
+            # needed to prevent losing pids if multiple jobs are started and one them raise an exception
+            cr.commit()
+
+            if pid == -2:
+                # no process to wait, directly call next job
+                # FIXME find a better way that this recursive call
+                build.schedule()
+
+            # cleanup only needed if it was not killed
+            if build.state == 'done':
+                build._local_cleanup()

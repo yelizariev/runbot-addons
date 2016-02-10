@@ -138,7 +138,7 @@ class runbot_build(orm.Model):
                             pass
 
                         if repo_name and extra_repo.name.endswith('%s.git' % repo_name):
-                            _logger.debug('ignore repo "%s" as all modules are already in addons-dev branch' % repo_name)
+                            build._log('checkout', 'ignore repo "%s" as all modules are already in addons-dev branch' % repo_name)
                             continue
                     repo_id, closest_name, server_match = build._get_closest_branch_name(extra_repo.id)
                     extra_repo_name = extra_repo.name

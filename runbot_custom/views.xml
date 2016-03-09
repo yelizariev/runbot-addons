@@ -11,6 +11,7 @@
             </xpath>
             <xpath expr="//group" position="inside">
                 <field name="is_addons_dev"/>
+                <field name="is_saas"/>
             </xpath>
         </field>
     </record>

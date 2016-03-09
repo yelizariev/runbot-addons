@@ -14,7 +14,8 @@ from openerp.addons.runbot.runbot import mkdirs, uniq_list, now, grep, locked, f
 _logger = logging.getLogger(__name__)
 
 MAGIC_PID_RUN_NEXT_JOB = -2
-
+SAAS_PORTAL_MODULES = 'saas_portal_sale_online'
+SAAS_SERVER_MODULES = ''
 
 class runbot_repo(orm.Model):
     _inherit = "runbot.repo"
@@ -28,6 +29,7 @@ class runbot_repo(orm.Model):
     _columns = {
         'base': fields.function(_get_base, type='char', string='Base URL', readonly=1),
         'is_addons_dev': fields.boolean('addons-dev'),
+        'is_saas': fields.boolean('odoo-saas-tools'),
         'install_updated_modules': fields.boolean('Install updated modules'),
     }
 
@@ -77,11 +79,38 @@ class runbot_branch(orm.Model):
 class runbot_build(orm.Model):
     _inherit = "runbot.build"
 
+    def _install_and_test_saas(self, cr, uid, build, lock_path, log_path, cmd_params=[]):
+        build._log('test_all', 'install saas system')
+        cmd = build.cmd_saas()
+        cmd += ['--suffix', build.dest,
+                '--portal-create',
+                '--server-create',
+                '--plan-create',
+                '--test',  # TODO in saas.py
+        ]
+        cmd += cmd_params
+        if grep(build.server("tools/config.py"), "data-dir"):
+            datadir = build.path('datadir')
+            cmd += ["--odoo-data-dir", datadir]
+
+        build.write({'job_start': now()})
+        return self.spawn(cmd, lock_path, log_path, cpu_limit=2100)
+
     def job_10_test_base(self, cr, uid, build, lock_path, log_path):
+        if build.repo_id.is_saas:
+            return self._install_and_test_saas(cr, uid, build, lock_path, log_path)
         build._log('test_base', 'skipping test_base')
         return MAGIC_PID_RUN_NEXT_JOB
 
     def job_20_test_all(self, cr, uid, build, lock_path, log_path):
+        if build.repo_id.is_saas:
+            cmd_params = [
+                '--portal-modules', SAAS_PORTAL_MODULES,
+                '--server-modules', SAAS_SERVER_MODULES, # TODO in saas.py
+            ]
+
+            return self._install_and_test_saas(cr, uid, build, lock_path, log_path)
+
         build._log('test_all', 'custom job_20_test_all (install updated modules)')
         self._local_pg_createdb(cr, uid, "%s-all" % build.dest)
         cmd, mods = build.cmd()
@@ -103,6 +132,10 @@ class runbot_build(orm.Model):
 
             # checkout branch
             build.branch_id.repo_id.git_export(build.name, build.path())
+            if build.branch_id.repo_id.is_saas:
+                # checkout saas.py from base for security reasons
+                # TODO
+                pass
 
             # v6 rename bin -> openerp
             if os.path.isdir(build.path('bin/addons')):
@@ -303,6 +336,22 @@ class runbot_build(orm.Model):
             modules = 'base'
 
         return cmd, modules
+
+    def cmd_saas(self, cr, uid, ids, context=None):
+        cmd = []
+        for build in self.browse(cr, uid, ids, context=context):
+            cmd, mods = build.cmd()
+            server_path = cmd[1]
+            cmd = [build.path('saas.py'),
+               '--odoo-script=%s' % server_path,
+               '--odoo-xmlrpc-port', build.port,
+               '--portal-db-name', '{suffix}---portal',
+               '--server-db-name', '{suffix}---server',
+               '--portal-template-db-name', '{suffix}---template',
+               '--plan-clients', '{suffix}---client-%i',
+            ]
+        return cmd
+
 
     def _local_pg_dropdb(self, cr, uid, dbname):
         openerp.service.db._drop_conn(cr, dbname)

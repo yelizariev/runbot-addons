@@ -116,6 +116,7 @@ class runbot_build(orm.Model):
         cmd, mods = build.cmd()
         if grep(build.server("tools/config.py"), "test-enable"):
             cmd.append("--test-enable")
+        cmd += ['--db-filter', '.*']
         cmd += ['-d', '%s-all' % build.dest, '-i', openerp.tools.ustr(mods), '--stop-after-init', '--log-level=test', '--max-cron-threads=0']
         # reset job_start to an accurate job_20 job_time
         build.write({'job_start': now()})

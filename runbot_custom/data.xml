@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<openerp>
+
+<data noupdate="1">
+    <!-- Cron -->
+    <record model="ir.cron" id="repo_cron">
+        <field name='name'>Runbot Cron (fetch odoo)</field>
+        <field name='interval_number'>1</field>
+        <field name='interval_type'>hours</field>
+        <field name="numbercall">-1</field>
+        <field name="doall" eval="False" />
+        <field name="model">runbot.repo</field>
+        <field name="function">cron_fetch_odoo</field>
+        <field name="args">()</field>
+    </record>
+</data>
+
+</openerp>

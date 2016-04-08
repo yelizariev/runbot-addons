@@ -39,11 +39,10 @@ class runbot_repo(orm.Model):
         return super(runbot_repo, self).github(cr, uid, ids, url, payload=payload, ignore_errors=ignore_errors, context=context)
 
 
-    def cron(self, cr, uid, ids=None, context=None):
+    def cron_fetch_odoo(self, cr, uid, ids=None, context=None):
         # make git fetch for odoo and other foreign repos
         ids = self.search(cr, uid, [('mode', '=', 'disabled')], context=context)
         self.update(cr, uid, ids, context=context)
-        return super(runbot_repo, self).cron(cr, uid, ids=ids, context=context)
 
 
 class runbot_branch(orm.Model):

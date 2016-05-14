@@ -99,16 +99,19 @@ class runbot_build(orm.Model):
             if build.repo_id.nginx:
                 dest = build.dest
                 if build.repo_id.is_saas:
-                    dest = '%s---portal' % dest
+                    dest = '%s-all---portal' % dest
                 result[build.id] = "%s.%s" % (dest, build.host)
             else:
                 result[build.id] = "%s:%s" % (domain, build.port)
         return result
+    _columns = {
+        'domain': fields.function(_get_domain, type='char', string='URL'),
+    }
 
-    def _install_and_test_saas(self, cr, uid, build, lock_path, log_path, cmd_params=[]):
+
+    def _install_and_test_saas(self, cr, uid, build, lock_path, log_path, cmd_params):
         cmd = build.cmd_saas()
-        cmd += ['--suffix', build.dest,
-                '--portal-create',
+        cmd += ['--portal-create',
                 '--server-create',
                 '--plan-create',
                 '--test',
@@ -123,6 +126,7 @@ class runbot_build(orm.Model):
         if build.repo_id.is_saas:
             build._log('test_base', 'base test of saas')
             cmd_params = [
+                '--suffix', '%s-base' % build.dest,
                 '--install-modules', 'saas_server,saas_portal',
             ]
             return self._install_and_test_saas(cr, uid, build, lock_path, log_path, cmd_params)
@@ -133,6 +137,7 @@ class runbot_build(orm.Model):
         if build.repo_id.is_saas:
             build._log('test_base', 'test update modules of saas')
             cmd_params = [
+                '--suffix', '%s-all' % build.dest,
                 '--install-modules', build.modules,
             ]
 

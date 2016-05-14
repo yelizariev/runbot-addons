@@ -34,14 +34,14 @@ class runbot_repo(orm.Model):
 
     def git_export_file(self, cr, uid, ids, treeish, dest, filename, context=None):
         for repo in self.browse(cr, uid, ids, context=context):
-            _logger.debug('checkout %s %s %s', repo.name, treeish, dest)
+            _logger.debug('checkout file %s %s %s', repo.name, treeish, dest)
             p1 = subprocess.Popen(['git', '--git-dir=%s' % repo.path, 'archive', treeish, filename], stdout=subprocess.PIPE)
             p2 = subprocess.Popen(['tar', '-xC', dest], stdin=p1.stdout, stdout=subprocess.PIPE)
             p1.stdout.close()  # Allow p1 to receive a SIGPIPE if p2 exits.
             p2.communicate()[0]
 
     def github(self, cr, uid, ids, url, payload=None, ignore_errors=False, context=None):
-        _logger.info('sleep before request')
+        _logger.debug('sleep before request')
         time.sleep(1)
         return super(runbot_repo, self).github(cr, uid, ids, url, payload=payload, ignore_errors=ignore_errors, context=context)
 
@@ -92,6 +92,19 @@ class runbot_branch(orm.Model):
 class runbot_build(orm.Model):
     _inherit = "runbot.build"
 
+    def _get_domain(self, cr, uid, ids, field_name, arg, context=None):
+        result = {}
+        domain = self.pool['runbot.repo'].domain(cr, uid)
+        for build in self.browse(cr, uid, ids, context=context):
+            if build.repo_id.nginx:
+                dest = build.dest
+                if build.repo_id.is_saas:
+                    dest = '%s---portal' % dest
+                result[build.id] = "%s.%s" % (dest, build.host)
+            else:
+                result[build.id] = "%s:%s" % (domain, build.port)
+        return result
+
     def _install_and_test_saas(self, cr, uid, build, lock_path, log_path, cmd_params=[]):
         cmd = build.cmd_saas()
         cmd += ['--suffix', build.dest,
@@ -101,9 +114,6 @@ class runbot_build(orm.Model):
                 '--test',
         ]
         cmd += cmd_params
-        if grep(build.server("tools/config.py"), "data-dir"):
-            datadir = build.path('datadir')
-            cmd += ["--odoo-data-dir", datadir]
 
         build._log('_install_and_test_saas', 'run saas.py: %s' % ' '.join(cmd))
         build.write({'job_start': now()})
@@ -112,7 +122,10 @@ class runbot_build(orm.Model):
     def job_10_test_base(self, cr, uid, build, lock_path, log_path):
         if build.repo_id.is_saas:
             build._log('test_base', 'base test of saas')
-            return self._install_and_test_saas(cr, uid, build, lock_path, log_path)
+            cmd_params = [
+                '--install-modules', 'saas_server,saas_portal',
+            ]
+            return self._install_and_test_saas(cr, uid, build, lock_path, log_path, cmd_params)
         build._log('test_base', 'skipping test_base')
         return MAGIC_PID_RUN_NEXT_JOB
 
@@ -141,13 +154,13 @@ class runbot_build(orm.Model):
             return super(runbot_build, self).job_30_run(cr, uid, build, lock_path, log_path)
 
         # adjust job_end to record an accurate job_20 job_time
-        build._log('run', 'Start running build %s' % build.dest)
+        build._log('run', 'Start running saas build %s' % build.dest)
         log_all = build.path('logs', 'job_20_test_all.txt')
         log_time = time.localtime(os.path.getmtime(log_all))
         v = {
             'job_end': time.strftime(openerp.tools.DEFAULT_SERVER_DATETIME_FORMAT, log_time),
         }
-        if grep(log_all, ".modules.loading: Modules loaded."):
+        if grep(log_all, "SaaS tests were passed successfully"):
             if rfind(log_all, _re_error):
                 v['result'] = "ko"
             elif rfind(log_all, _re_warning):
@@ -169,7 +182,7 @@ class runbot_build(orm.Model):
             # not sure, to avoid old server to check other dbs
             cmd += ["--max-cron-threads", "0"]
 
-        cmd += ['-d', "%s-all" % build.dest]
+        #cmd += ['-d', "%s-all" % build.dest]
 
         if grep(build.server("tools/config.py"), "db-filter"):
             if build.repo_id.nginx:
@@ -204,7 +217,8 @@ class runbot_build(orm.Model):
             build.branch_id.repo_id.git_export(build.name, build.path())
             if build.branch_id.repo_id.is_saas:
                 # checkout saas.py from base for security reasons
-                build.branch_id.repo_id.git_export_file(build.branch_id.branch_name, build.path(), 'saas.py')
+                repo_id, closest_name, server_match = build._get_closest_branch_name(build.branch_id.repo_id.id)
+                build.branch_id.repo_id.git_export_file(closest_name, build.path(), 'saas.py')
 
             # v6 rename bin -> openerp
             if os.path.isdir(build.path('bin/addons')):
@@ -414,16 +428,24 @@ class runbot_build(orm.Model):
             cmd = ['python', build.path('saas.py'),
                '--odoo-script=%s' % server_path,
                '--odoo-xmlrpc-port=%s' % build.port,
-               '--portal-db-name', '{suffix}',
+               '--portal-db-name', '{suffix}---portal',
                '--server-db-name', '{suffix}---server',
                '--plan-template-db-name', '{suffix}---template',
                '--plan-clients', '{suffix}---client-%i',
             ]
+            if grep(build.server("tools/config.py"), "data-dir"):
+                datadir = build.path('datadir')
+                cmd += ["--odoo-data-dir", datadir]
             if grep(build.server("tools/config.py"), "log-db"):
                 logdb = cr.dbname
                 if config['db_host'] and grep(build.server('sql_db.py'), 'allow_uri'):
                     logdb = 'postgres://{cfg[db_user]}:{cfg[db_password]}@{cfg[db_host]}/{db}'.format(cfg=config, db=cr.dbname)
-                cmd += ["--log-db=%s" % logdb]
+                cmd += ["--odoo-log-db=%s" % logdb]
+            addons_path = ','.join([
+                build.path('openerp/addons')
+            ])
+            cmd += ['--odoo-addons-path', addons_path]
+
         return cmd
 
 

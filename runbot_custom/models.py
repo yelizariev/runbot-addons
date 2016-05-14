@@ -10,12 +10,11 @@ import time
 import openerp
 from openerp.osv import orm, fields
 from openerp.addons.runbot.runbot import mkdirs, uniq_list, now, grep, locked, fqdn
+from openerp.tools import config, appdirs
 
 _logger = logging.getLogger(__name__)
 
 MAGIC_PID_RUN_NEXT_JOB = -2
-SAAS_PORTAL_MODULES = 'saas_portal_sale_online'
-SAAS_SERVER_MODULES = ''
 
 class runbot_repo(orm.Model):
     _inherit = "runbot.repo"
@@ -32,6 +31,14 @@ class runbot_repo(orm.Model):
         'is_saas': fields.boolean('odoo-saas-tools'),
         'install_updated_modules': fields.boolean('Install updated modules'),
     }
+
+    def git_export_file(self, cr, uid, ids, treeish, dest, filename, context=None):
+        for repo in self.browse(cr, uid, ids, context=context):
+            _logger.debug('checkout %s %s %s', repo.name, treeish, dest)
+            p1 = subprocess.Popen(['git', '--git-dir=%s' % repo.path, 'archive', treeish, filename], stdout=subprocess.PIPE)
+            p2 = subprocess.Popen(['tar', '-xC', dest], stdin=p1.stdout, stdout=subprocess.PIPE)
+            p1.stdout.close()  # Allow p1 to receive a SIGPIPE if p2 exits.
+            p2.communicate()[0]
 
     def github(self, cr, uid, ids, url, payload=None, ignore_errors=False, context=None):
         _logger.info('sleep before request')
@@ -86,36 +93,37 @@ class runbot_build(orm.Model):
     _inherit = "runbot.build"
 
     def _install_and_test_saas(self, cr, uid, build, lock_path, log_path, cmd_params=[]):
-        build._log('test_all', 'install saas system')
         cmd = build.cmd_saas()
         cmd += ['--suffix', build.dest,
                 '--portal-create',
                 '--server-create',
                 '--plan-create',
-                '--test',  # TODO in saas.py
+                '--test',
         ]
         cmd += cmd_params
         if grep(build.server("tools/config.py"), "data-dir"):
             datadir = build.path('datadir')
             cmd += ["--odoo-data-dir", datadir]
 
+        build._log('_install_and_test_saas', 'run saas.py: %s' % ' '.join(cmd))
         build.write({'job_start': now()})
         return self.spawn(cmd, lock_path, log_path, cpu_limit=2100)
 
     def job_10_test_base(self, cr, uid, build, lock_path, log_path):
         if build.repo_id.is_saas:
+            build._log('test_base', 'base test of saas')
             return self._install_and_test_saas(cr, uid, build, lock_path, log_path)
         build._log('test_base', 'skipping test_base')
         return MAGIC_PID_RUN_NEXT_JOB
 
     def job_20_test_all(self, cr, uid, build, lock_path, log_path):
         if build.repo_id.is_saas:
+            build._log('test_base', 'test update modules of saas')
             cmd_params = [
-                '--portal-modules', SAAS_PORTAL_MODULES,
-                '--server-modules', SAAS_SERVER_MODULES, # TODO in saas.py
+                '--install-modules', build.modules,
             ]
 
-            return self._install_and_test_saas(cr, uid, build, lock_path, log_path)
+            return self._install_and_test_saas(cr, uid, build, lock_path, log_path, cmd_params)
 
         build._log('test_all', 'custom job_20_test_all (install updated modules)')
         self._local_pg_createdb(cr, uid, "%s-all" % build.dest)
@@ -141,8 +149,7 @@ class runbot_build(orm.Model):
             build.branch_id.repo_id.git_export(build.name, build.path())
             if build.branch_id.repo_id.is_saas:
                 # checkout saas.py from base for security reasons
-                # TODO
-                pass
+                build.branch_id.repo_id.git_export_file(build.branch_id.branch_name, build.path(), 'saas.py')
 
             # v6 rename bin -> openerp
             if os.path.isdir(build.path('bin/addons')):
@@ -349,14 +356,19 @@ class runbot_build(orm.Model):
         for build in self.browse(cr, uid, ids, context=context):
             cmd, mods = build.cmd()
             server_path = cmd[1]
-            cmd = [build.path('saas.py'),
+            cmd = ['python', build.path('saas.py'),
                '--odoo-script=%s' % server_path,
-               '--odoo-xmlrpc-port', build.port,
-               '--portal-db-name', '{suffix}---portal',
+               '--odoo-xmlrpc-port=%s' % build.port,
+               '--portal-db-name', '{suffix}',
                '--server-db-name', '{suffix}---server',
-               '--portal-template-db-name', '{suffix}---template',
+               '--plan-template-db-name', '{suffix}---template',
                '--plan-clients', '{suffix}---client-%i',
             ]
+            if grep(build.server("tools/config.py"), "log-db"):
+                logdb = cr.dbname
+                if config['db_host'] and grep(build.server('sql_db.py'), 'allow_uri'):
+                    logdb = 'postgres://{cfg[db_user]}:{cfg[db_password]}@{cfg[db_host]}/{db}'.format(cfg=config, db=cr.dbname)
+                cmd += ["--log-db=%s" % logdb]
         return cmd
 
 

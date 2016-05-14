@@ -336,9 +336,15 @@ class runbot_build(orm.Model):
             target_repo_ids.append(r.id)
             r = r.duplicate_id
 
-        sort_by_repo = lambda d: (target_repo_ids.index(d['repo_id'][0]), -1 * len(d.get('branch_name', '')), -1 * d['id'])
-        result_for = lambda d: (d['repo_id'][0], d['name'], 'exact')
+        _logger.debug('Search closest of %s (%s) in repos %r', name, repo.name, target_repo_ids)
+
+        sort_by_repo = lambda d: (not d['sticky'],      # sticky first
+                                  target_repo_ids.index(d['repo_id'][0]),
+                                  -1 * len(d.get('branch_name', '')),
+                                  -1 * d['id'])
+        result_for = lambda d, match='exact': (d['repo_id'][0], d['name'], match)
         branch_exists = lambda d: branch_pool._is_on_remote(cr, uid, [d['id']], context=context)
+        fields = ['name', 'repo_id', 'sticky']
 
         # 1. same name, not a PR
         domain = [
@@ -346,7 +352,7 @@ class runbot_build(orm.Model):
             ('branch_name', '=', name),
             ('name', '=like', 'refs/heads/%'),
         ]
-        targets = branch_pool.search_read(cr, uid, domain, ['name', 'repo_id'], order='id DESC',
+        targets = branch_pool.search_read(cr, uid, domain, fields, order='id DESC',
                                           context=context)
         targets = sorted(targets, key=sort_by_repo)
         if targets and branch_exists(targets[0]):
@@ -358,7 +364,7 @@ class runbot_build(orm.Model):
             ('pull_head_name', '=', name),
             ('name', '=like', 'refs/pull/%'),
         ]
-        pulls = branch_pool.search_read(cr, uid, domain, ['name', 'repo_id'], order='id DESC',
+        pulls = branch_pool.search_read(cr, uid, domain, fields, order='id DESC',
                                         context=context)
         pulls = sorted(pulls, key=sort_by_repo)
         for pull in pulls:
@@ -370,13 +376,13 @@ class runbot_build(orm.Model):
         branches = branch_pool.search_read(
             cr, uid,
             [('repo_id', 'in', target_repo_ids), ('name', '=like', 'refs/heads/%')],
-            ['name', 'branch_name', 'repo_id'], order='id DESC', context=context
+            fields + ['branch_name'], order='id DESC', context=context
         )
         branches = sorted(branches, key=sort_by_repo)
 
         for branch in branches:
             if name.startswith(branch['branch_name'] + '-') and branch_exists(branch):
-                return result_for(branch)
+                return result_for(branch, 'prefix')
 
         # 4. Common ancestors (git merge-base)
         for target_id in target_repo_ids:

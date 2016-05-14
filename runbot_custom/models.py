@@ -136,6 +136,61 @@ class runbot_build(orm.Model):
         build.write({'job_start': now()})
         return self.spawn(cmd, lock_path, log_path, cpu_limit=2100)
 
+    def job_30_run(self, cr, uid, build, lock_path, log_path):
+        if not build.repo_id.is_saas:
+            return super(runbot_build, self).job_30_run(cr, uid, build, lock_path, log_path)
+
+        # adjust job_end to record an accurate job_20 job_time
+        build._log('run', 'Start running build %s' % build.dest)
+        log_all = build.path('logs', 'job_20_test_all.txt')
+        log_time = time.localtime(os.path.getmtime(log_all))
+        v = {
+            'job_end': time.strftime(openerp.tools.DEFAULT_SERVER_DATETIME_FORMAT, log_time),
+        }
+        if grep(log_all, ".modules.loading: Modules loaded."):
+            if rfind(log_all, _re_error):
+                v['result'] = "ko"
+            elif rfind(log_all, _re_warning):
+                v['result'] = "warn"
+            elif not grep(build.server("test/common.py"), "post_install") or grep(log_all, "Initiating shutdown."):
+                v['result'] = "ok"
+        else:
+            v['result'] = "ko"
+        build.write(v)
+        build.github_status()
+
+        # run server
+        cmd, mods = build.cmd()
+        if os.path.exists(build.server('addons/im_livechat')):
+            cmd += ["--workers", "2"]
+            cmd += ["--longpolling-port", "%d" % (build.port + 1)]
+            cmd += ["--max-cron-threads", "1"]
+        else:
+            # not sure, to avoid old server to check other dbs
+            cmd += ["--max-cron-threads", "0"]
+
+        cmd += ['-d', "%s-all" % build.dest]
+
+        if grep(build.server("tools/config.py"), "db-filter"):
+            if build.repo_id.nginx:
+                cmd += ['--db-filter','%d.*$']
+            else:
+                cmd += ['--db-filter','%s.*$' % build.dest]
+
+        ## Web60
+        #self.client_web_path=os.path.join(self.running_path,"client-web")
+        #self.client_web_bin_path=os.path.join(self.client_web_path,"openerp-web.py")
+        #self.client_web_doc_path=os.path.join(self.client_web_path,"doc")
+        #webclient_config % (self.client_web_port+port,self.server_net_port+port,self.server_net_port+port)
+        #cfgs = [os.path.join(self.client_web_path,"doc","openerp-web.cfg"), os.path.join(self.client_web_path,"openerp-web.cfg")]
+        #for i in cfgs:
+        #    f=open(i,"w")
+        #    f.write(config)
+        #    f.close()
+        #cmd=[self.client_web_bin_path]
+
+        return self.spawn(cmd, lock_path, log_path, cpu_limit=None)
+
     def checkout(self, cr, uid, ids, context=None):
         for build in self.browse(cr, uid, ids, context=context):
             # starts from scratch

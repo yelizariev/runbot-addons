@@ -338,6 +338,7 @@ class runbot_build(orm.Model):
 
         sort_by_repo = lambda d: (target_repo_ids.index(d['repo_id'][0]), -1 * len(d.get('branch_name', '')), -1 * d['id'])
         result_for = lambda d: (d['repo_id'][0], d['name'], 'exact')
+        branch_exists = lambda d: branch_pool._is_on_remote(cr, uid, [d['id']], context=context)
 
         # 1. same name, not a PR
         domain = [
@@ -348,7 +349,7 @@ class runbot_build(orm.Model):
         targets = branch_pool.search_read(cr, uid, domain, ['name', 'repo_id'], order='id DESC',
                                           context=context)
         targets = sorted(targets, key=sort_by_repo)
-        if targets:
+        if targets and branch_exists(targets[0]):
             return result_for(targets[0])
 
         # 2. PR with head name equals
@@ -374,7 +375,7 @@ class runbot_build(orm.Model):
         branches = sorted(branches, key=sort_by_repo)
 
         for branch in branches:
-            if name.startswith(branch['branch_name'] + '-'):
+            if name.startswith(branch['branch_name'] + '-') and branch_exists(branch):
                 return result_for(branch)
 
         # 4. Common ancestors (git merge-base)

@@ -482,6 +482,7 @@ class runbot_build(orm.Model):
                     timeout = (build.branch_id.job_timeout or default_timeout) * 60
                     if build.job != jobs[-1] and build.job_time > timeout:
                         build.logger('%s time exceded (%ss)', build.job, build.job_time)
+                        build.write({'job_end': now()})
                         build.kill(result='killed')
                     continue
                 build.logger('%s finished', build.job)

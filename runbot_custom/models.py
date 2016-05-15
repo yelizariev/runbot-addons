@@ -82,6 +82,7 @@ class runbot_repo(orm.Model):
 
         refs = [[decode_utf(field) for field in line.split('\x00')] for line in git_refs.split('\n')]
 
+        i = 0
         for name, sha, date, author, author_email, subject, committer, committer_email in refs:
             # create or get branch
             branch_ids = Branch.search(cr, uid, [('repo_id', '=', repo.id), ('name', '=', name)])
@@ -90,6 +91,8 @@ class runbot_repo(orm.Model):
             else:
                 _logger.debug('repo %s found new branch %s', repo.name, name)
                 branch_id = Branch.create(cr, uid, {'repo_id': repo.id, 'name': name})
+                i += 1
+
             branch = Branch.browse(cr, uid, [branch_id], context=context)[0]
             # skip build for old branches
             if dateutil.parser.parse(date[:19]) + datetime.timedelta(30) < datetime.datetime.now():
@@ -118,7 +121,10 @@ class runbot_repo(orm.Model):
                         # new order keeps lowest skipped sequence
                         build_info['sequence'] = skipped_build_sequences[0]['sequence']
                 Build.create(cr, uid, build_info)
-            #cr.commit()
+            if i == 100:
+                i = 0
+                cr.commit()
+
         # skip old builds (if their sequence number is too low, they will not ever be built)
         skippable_domain = [('repo_id', '=', repo.id), ('state', '=', 'pending')]
         icp = self.pool['ir.config_parameter']

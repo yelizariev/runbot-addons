@@ -217,7 +217,7 @@ class runbot_build(orm.Model):
             return self._install_and_test_saas(cr, uid, build, lock_path, log_path, '%s--base' % build.dest, build.modules)
 
         build._log('test_base', 'Test Updated and explicit modules')
-        return self._install_and_test(cr, uid, build, lock_path, log_path, "%s-all" % build.dest, build.modules)
+        return self._install_and_test(cr, uid, build, lock_path, log_path, "%s-base" % build.dest, build.modules)
 
     def job_20_test_all(self, cr, uid, build, lock_path, log_path):
         if build.repo_id.modules_auto == 'none':

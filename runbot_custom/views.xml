@@ -6,9 +6,6 @@
         <field name="model">runbot.repo</field>
         <field name="inherit_id" ref="runbot.view_repo_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//field[@name='modules_auto']" position="after">
-                <field name="install_updated_modules"/>
-            </xpath>
             <xpath expr="//group" position="inside">
                 <field name="is_addons_dev"/>
                 <field name="is_saas"/>
@@ -25,6 +22,20 @@
             </xpath>
         </field>
     </record>
+
+    <template id="build_button" inherit_id="runbot.build_button">
+        <xpath expr="//a[@class='btn btn-primary']" position="replace">
+            <t t-if="bu.get('domain_all')">
+                <a t-if="bu['state']=='running'" t-attf-href="http://{{bu['domain_all']}}/" class="btn btn-primary" title="All modules"><i class="fa fa-sign-in"/></a>
+            </t>
+            <a t-if="bu['state']=='running'" t-attf-href="http://{{bu['domain_base']}}/" class="btn btn-success" title="Updated and explicit modules"><i class="fa fa-sign-in"/></a>
+        </xpath>
+        <xpath expr="//a[contains(@t-attf-href, 'job_20_test_all.txt')]/.." position="after">
+            <li t-if="bu['host']"><a t-attf-href="http://{{bu['host']}}/runbot/static/build/#{bu['real_dest']}/logs/job_30_run.txt">Run logs <i class="fa fa-file-text-o"/></a></li>
+
+        </xpath>
+
+    </template>
 
     </data>
 </openerp>

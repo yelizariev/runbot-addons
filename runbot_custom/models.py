@@ -9,7 +9,7 @@ import time
 
 import openerp
 from openerp.osv import orm, fields
-from openerp.addons.runbot.runbot import mkdirs, uniq_list, now, grep, locked, fqdn
+from openerp.addons.runbot.runbot import mkdirs, uniq_list, now, grep, locked, fqdn, rfind, _re_error, _re_warning, RunbotController
 from openerp.tools import config, appdirs
 
 _logger = logging.getLogger(__name__)
@@ -29,7 +29,6 @@ class runbot_repo(orm.Model):
         'base': fields.function(_get_base, type='char', string='Base URL', readonly=1),
         'is_addons_dev': fields.boolean('addons-dev'),
         'is_saas': fields.boolean('odoo-saas-tools'),
-        'install_updated_modules': fields.boolean('Install updated modules'),
     }
 
     def git_export_file(self, cr, uid, ids, treeish, dest, filename, context=None):
@@ -88,84 +87,74 @@ class runbot_branch(orm.Model):
         'updated_modules': fields.function(_get_updated_modules, type='char', string='Updated modules', help='Comma-separated list of updated modules (for PR)', readonly=1, store=False),
     }
 
+def fix_long_line(s):
+    return ', '.join(s.split(','))
 
 class runbot_build(orm.Model):
     _inherit = "runbot.build"
 
-    def _get_domain(self, cr, uid, ids, field_name, arg, context=None):
-        result = {}
-        domain = self.pool['runbot.repo'].domain(cr, uid)
-        for build in self.browse(cr, uid, ids, context=context):
-            if build.repo_id.nginx:
-                dest = build.dest
-                if build.repo_id.is_saas:
-                    dest = '%s-all---portal' % dest
-                result[build.id] = "%s.%s" % (dest, build.host)
-            else:
-                result[build.id] = "%s:%s" % (domain, build.port)
-        return result
     _columns = {
-        'domain': fields.function(_get_domain, type='char', string='URL'),
+        'auto_modules': fields.char("Filtered modules to test in *-all* installation"),
     }
 
 
-    def _install_and_test_saas(self, cr, uid, build, lock_path, log_path, cmd_params):
+    def _install_and_test(self, cr, uid, build, lock_path, log_path, dbname, modules):
+        build._log('_install_and_test', 'DB: %s, Modules: %s' % (dbname, fix_long_line(modules)))
+        self._local_pg_createdb(cr, uid, dbname)
+        cmd, mods = build.cmd()
+        if grep(build.server("tools/config.py"), "test-enable"):
+            cmd.append("--test-enable")
+        cmd += ['--db-filter', '.*']
+        cmd += ['-d', dbname, '-i', modules, '--stop-after-init', '--log-level=test', '--max-cron-threads=0']
+        return self.spawn(cmd, lock_path, log_path, cpu_limit=300)
+
+    def _install_and_test_saas(self, cr, uid, build, lock_path, log_path, suffix, modules):
         cmd = build.cmd_saas()
         cmd += ['--portal-create',
                 '--server-create',
                 '--plan-create',
                 '--test',
+                '--suffix', suffix,
+                '--install-modules', modules,
         ]
-        cmd += cmd_params
 
-        build._log('_install_and_test_saas', 'run saas.py: %s' % ' '.join(cmd))
+        build._log('_install_and_test_saas', 'run saas.py: %s' % fix_long_line(' '.join(cmd)))
         build.write({'job_start': now()})
         return self.spawn(cmd, lock_path, log_path, cpu_limit=2100)
 
     def job_10_test_base(self, cr, uid, build, lock_path, log_path):
         if build.repo_id.is_saas:
-            build._log('test_base', 'base test of saas')
-            cmd_params = [
-                '--suffix', '%s-base' % build.dest,
-                '--install-modules', 'saas_server,saas_portal',
-            ]
-            return self._install_and_test_saas(cr, uid, build, lock_path, log_path, cmd_params)
-        build._log('test_base', 'skipping test_base')
-        return MAGIC_PID_RUN_NEXT_JOB
+            build._log('test_base', 'Test updated saas modules')
+            return self._install_and_test_saas(cr, uid, build, lock_path, log_path, '%s--base' % build.dest, build.modules)
+
+        build._log('test_base', 'Test Updated and explicit modules')
+        return self._install_and_test(cr, uid, build, lock_path, log_path, "%s-all" % build.dest, build.modules)
 
     def job_20_test_all(self, cr, uid, build, lock_path, log_path):
+        if build.repo_id.modules_auto == 'none':
+            build._log('test_all', 'Testing all modules is not configured for this repo')
+            return MAGIC_PID_RUN_NEXT_JOB
+
         if build.repo_id.is_saas:
-            build._log('test_base', 'test update modules of saas')
-            cmd_params = [
-                '--suffix', '%s-all' % build.dest,
-                '--install-modules', build.modules,
-            ]
+            build._log('test_all', 'test all saas modules')
+            return self._install_and_test_saas(cr, uid, build, lock_path, log_path, '%s--all' % build.dest, build.auto_modules)
 
-            return self._install_and_test_saas(cr, uid, build, lock_path, log_path, cmd_params)
-
-        build._log('test_all', 'custom job_20_test_all (install updated modules)')
-        self._local_pg_createdb(cr, uid, "%s-all" % build.dest)
-        cmd, mods = build.cmd()
-        if grep(build.server("tools/config.py"), "test-enable"):
-            cmd.append("--test-enable")
-        cmd += ['--db-filter', '.*']
-        cmd += ['-d', '%s-all' % build.dest, '-i', openerp.tools.ustr(mods), '--stop-after-init', '--log-level=test', '--max-cron-threads=0']
-        # reset job_start to an accurate job_20 job_time
-        build.write({'job_start': now()})
-        return self.spawn(cmd, lock_path, log_path, cpu_limit=2100)
+        build._log('test_all', 'Test all modules')
+        return self._install_and_test(cr, uid, build, lock_path, log_path, "%s-all" % build.dest, build.auto_modules)
 
     def job_30_run(self, cr, uid, build, lock_path, log_path):
-        if not build.repo_id.is_saas:
-            return super(runbot_build, self).job_30_run(cr, uid, build, lock_path, log_path)
-
         # adjust job_end to record an accurate job_20 job_time
-        build._log('run', 'Start running saas build %s' % build.dest)
-        log_all = build.path('logs', 'job_20_test_all.txt')
-        log_time = time.localtime(os.path.getmtime(log_all))
+        build._log('run', 'Start running build %s' % build.dest)
+        if build.repo_id.modules_auto == 'none':
+            log_all = build.path('logs', 'job_10_test_base.txt')
+            log_time = time.localtime(os.path.getmtime(log_all))
+        else:
+            log_all = build.path('logs', 'job_20_test_all.txt')
+            log_time = time.localtime(os.path.getmtime(log_all))
         v = {
             'job_end': time.strftime(openerp.tools.DEFAULT_SERVER_DATETIME_FORMAT, log_time),
         }
-        if grep(log_all, "SaaS tests were passed successfully"):
+        if grep(log_all, ".modules.loading: Modules loaded.") or grep(log_all, "SaaS tests were passed successfully"):
             if rfind(log_all, _re_error):
                 v['result'] = "ko"
             elif rfind(log_all, _re_warning):
@@ -187,6 +176,7 @@ class runbot_build(orm.Model):
             # not sure, to avoid old server to check other dbs
             cmd += ["--max-cron-threads", "0"]
 
+        #don't use -d, because we run miltiple databases
         #cmd += ['-d', "%s-all" % build.dest]
 
         if grep(build.server("tools/config.py"), "db-filter"):
@@ -233,6 +223,7 @@ class runbot_build(orm.Model):
             server_match = 'builtin'
 
             # build complete set of modules to install
+            auto_modules = []
             modules_to_move = []
             modules_to_test = ((build.branch_id.modules or '') + ',' +
                                (build.repo_id.modules or ''))
@@ -242,11 +233,11 @@ class runbot_build(orm.Model):
 
             if not has_server:
                 if build.repo_id.modules_auto == 'repo':
-                    modules_to_test += [
+                    auto_modules += [
                         os.path.basename(os.path.dirname(a))
                         for a in glob.glob(build.path('*/__openerp__.py'))
                     ]
-                    _logger.debug("local modules_to_test for build %s: %s", build.dest, modules_to_test)
+                    _logger.debug("repo modules for build %s: %s", build.dest, auto_modules)
 
                 for extra_repo in build.repo_id.dependency_ids:
                     if build.repo_id.is_addons_dev:
@@ -293,18 +284,21 @@ class runbot_build(orm.Model):
                 for a in glob.glob(build.server('addons/*/__openerp__.py'))
             ]
             if build.repo_id.modules_auto == 'all' or (build.repo_id.modules_auto != 'none' and has_server):
-                modules_to_test += available_modules
+                auto_modules += available_modules
 
-            if build.repo_id.install_updated_modules:
-                updated_modules = build.branch_id.updated_modules
-                if updated_modules:
-                    modules_to_test += updated_modules.split(',')
+            updated_modules = build.branch_id.updated_modules
+            if updated_modules:
+                modules_to_test += updated_modules.split(',')
 
             modules_to_test = self.filter_modules(cr, uid, modules_to_test,
                                                   set(available_modules), explicit_modules)
+            auto_modules = self.filter_modules(cr, uid, auto_modules,
+                                                  set(available_modules), explicit_modules)
             _logger.debug("modules_to_test for build %s: %s", build.dest, modules_to_test)
+            _logger.debug("auto_modules for build %s: %s", build.dest, auto_modules)
             build._log('checkout', 'modules to install: %s' % modules_to_test) 
             build.write({'server_match': server_match,
+                         'auto_modules': ','.join(auto_modules),
                          'modules': ','.join(modules_to_test)})
 
     def _get_closest_branch_name(self, cr, uid, ids, target_repo_id, context=None):
@@ -536,3 +530,20 @@ class runbot_build(orm.Model):
             # cleanup only needed if it was not killed
             if build.state == 'done':
                 build._local_cleanup()
+
+class RunbotControllerCustom(RunbotController):
+
+    def build_info(self, build):
+        res = super(RunbotControllerCustom, self).build_info(build)
+        types = ['base']
+        if build.repo_id.modules_auto != 'none':
+            types.append('all')
+        for t in types:
+            k = 'domain_%s' % t
+            dest = build.dest
+            if build.repo_id.is_saas:
+                v = '%s--%s---portal' % (dest, t)
+            else:
+                v = '%s-%s' % (dest, t)
+            res[k] = '%s.%s' % (v, build.host)
+        return res

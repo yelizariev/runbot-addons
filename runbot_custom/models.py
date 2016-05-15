@@ -94,6 +94,9 @@ class runbot_repo(orm.Model):
                 branch_id = branch_ids[0]
             else:
                 _logger.debug('repo %s found new branch %s', repo.name, name)
+                if repo.mode == 'disabled' and name.startswith('refs/pull/'):
+                    _logger.debug('skip pull %s for disabled repo', name, repo.name)
+                    continue
                 branch_id = Branch.create(cr, uid, {'repo_id': repo.id, 'name': name})
                 i += 1
 
@@ -150,16 +153,15 @@ class runbot_branch(orm.Model):
             return repo.github('/repos/:owner/:repo/pulls/%s/files' % pull_number, ignore_errors=True) or []
         return []
 
-    def _get_updated_modules(self, cr, uid, ids, field_name, arg, context=None):
-        r = dict.fromkeys(ids, False)
+    def get_updated_modules(self, cr, uid, ids, context=None):
+        assert len(ids) == 1, 'get_updated_modules must called for single record only'
         for bid in ids:
             files = self._get_pull_files(cr, uid, [bid], context=context)
             if files:
                 files = [f['raw_url'] for f in files]
                 files = [f.split('/') for f in files]
                 updated_modules = set([f[7] for f in files if len(f) > 8])
-                r[bid] = ','.join(updated_modules)
-        return r
+                return ','.join(updated_modules)
 
     def _get_pull_base_name(self, cr, uid, ids, field_name, arg, context=None):
         r = dict.fromkeys(ids, False)
@@ -171,7 +173,7 @@ class runbot_branch(orm.Model):
 
     _columns = {
         #'pull_base_name': fields.function(_get_pull_base_name, type='char', string='PR Base name', readonly=1, store=True),
-        'updated_modules': fields.function(_get_updated_modules, type='char', string='Updated modules', help='Comma-separated list of updated modules (for PR)', readonly=1, store=False),
+        #'updated_modules': fields.function(_get_updated_modules, type='char', string='Updated modules', help='Comma-separated list of updated modules (for PR)', readonly=1, store=False),
     }
 
 def fix_long_line(s):
@@ -373,7 +375,8 @@ class runbot_build(orm.Model):
             if build.repo_id.modules_auto == 'all' or (build.repo_id.modules_auto != 'none' and has_server):
                 auto_modules += available_modules
 
-            updated_modules = build.branch_id.updated_modules
+            updated_modules = build.branch_id.get_updated_modules()
+            _logger.debug('updated_modules %s', updated_modules)
             if updated_modules:
                 modules_to_test += updated_modules.split(',')
 

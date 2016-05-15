@@ -1,3 +1,4 @@
+import datetime
 import os
 import re
 import glob
@@ -6,10 +7,13 @@ import shutil
 import subprocess
 import operator
 import time
+import dateutil.parser
+from dateutil.relativedelta import relativedelta
+
 
 import openerp
 from openerp.osv import orm, fields
-from openerp.addons.runbot.runbot import mkdirs, uniq_list, now, grep, locked, fqdn, rfind, _re_error, _re_warning, RunbotController
+from openerp.addons.runbot.runbot import mkdirs, uniq_list, now, grep, locked, fqdn, rfind, _re_error, _re_warning, RunbotController, decode_utf, run, dt2time
 from openerp.tools import config, appdirs
 
 _logger = logging.getLogger(__name__)

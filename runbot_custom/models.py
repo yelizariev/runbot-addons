@@ -95,7 +95,7 @@ class runbot_repo(orm.Model):
             else:
                 _logger.debug('repo %s found new branch %s', repo.name, name)
                 if repo.mode == 'disabled' and name.startswith('refs/pull/'):
-                    _logger.debug('skip pull %s for disabled repo', name, repo.name)
+                    _logger.debug('skip pull %s for disabled repo %s', name, repo.name)
                     continue
                 branch_id = Branch.create(cr, uid, {'repo_id': repo.id, 'name': name})
                 i += 1

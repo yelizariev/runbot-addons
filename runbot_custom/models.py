@@ -266,6 +266,7 @@ class runbot_build(orm.Model):
             cmd += ["--max-cron-threads", "0"]
 
         #don't use -d, because we run miltiple databases
+        cmd += ['-d', '""']
         #cmd += ['-d', "%s-all" % build.dest]
 
         if grep(build.server("tools/config.py"), "db-filter"):

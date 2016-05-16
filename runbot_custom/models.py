@@ -206,7 +206,6 @@ class runbot_build(orm.Model):
                 '--suffix', suffix,
                 '--install-modules', modules,
         ]
-
         build._log('_install_and_test_saas', 'run saas.py: %s' % fix_long_line(' '.join(cmd)))
         build.write({'job_start': now()})
         return self.spawn(cmd, lock_path, log_path, cpu_limit=2100)
@@ -265,8 +264,7 @@ class runbot_build(orm.Model):
             # not sure, to avoid old server to check other dbs
             cmd += ["--max-cron-threads", "0"]
 
-        #don't use -d, because we run miltiple databases
-        cmd += ['--database=']
+        # comment out origin config. See cmd()
         #cmd += ['-d', "%s-all" % build.dest]
 
         if grep(build.server("tools/config.py"), "db-filter"):
@@ -512,6 +510,9 @@ class runbot_build(orm.Model):
             ])
             cmd += ['--addons-path', addons_path]
 
+        # pass empty -d to override db_name in config
+        cmd += ['--database=']
+
         if not modules:
             modules = 'base'
 
@@ -530,6 +531,7 @@ class runbot_build(orm.Model):
                '--plan-template-db-name', '{suffix}---template',
                '--plan-clients', '{suffix}---client-%i',
             ]
+            cmd += ['--database=']
             if grep(build.server("tools/config.py"), "data-dir"):
                 datadir = build.path('datadir')
                 cmd += ["--odoo-data-dir", datadir]

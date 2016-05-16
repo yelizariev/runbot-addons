@@ -520,7 +520,6 @@ class runbot_build(orm.Model):
 
     def cmd_saas(self, cr, uid, ids, context=None):
         cmd = []
-        base_domain = self.pool.get('ir.config_parameter').get_param(cr, uid, 'runbot.domain', fqdn())
         for build in self.browse(cr, uid, ids, context=context):
             cmd, mods = build.cmd()
             server_path = cmd[1]
@@ -531,7 +530,6 @@ class runbot_build(orm.Model):
                '--server-db-name', '{suffix}---server',
                '--plan-template-db-name', '{suffix}---template',
                '--plan-clients', '{suffix}---client-%i',
-               '--base-domain', base_domain,
             ]
             if grep(build.server("tools/config.py"), "data-dir"):
                 datadir = build.path('datadir')

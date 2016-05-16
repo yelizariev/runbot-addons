@@ -531,7 +531,6 @@ class runbot_build(orm.Model):
                '--plan-template-db-name', '{suffix}---template',
                '--plan-clients', '{suffix}---client-%i',
             ]
-            cmd += ['--odoo-database=']
             if grep(build.server("tools/config.py"), "data-dir"):
                 datadir = build.path('datadir')
                 cmd += ["--odoo-data-dir", datadir]

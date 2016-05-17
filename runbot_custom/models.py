@@ -1,10 +1,12 @@
 import datetime
+import fileinput
 import os
 import re
 import glob
 import logging
 import shutil
 import subprocess
+import sys
 import operator
 import time
 import dateutil.parser
@@ -19,6 +21,15 @@ from openerp.tools import config, appdirs
 _logger = logging.getLogger(__name__)
 
 MAGIC_PID_RUN_NEXT_JOB = -2
+
+#http://stackoverflow.com/questions/39086/search-and-replace-a-line-in-a-file-in-python
+def replace(file, searchExp, replaceExp):
+    _logger.debug('replace(%s)', [file, searchExp, replaceExp])
+    for line in fileinput.input(file, inplace=1):
+        if searchExp in line:
+            line = line.replace(searchExp, replaceExp)
+        sys.stdout.write(line)
+
 
 class runbot_repo(orm.Model):
     _inherit = "runbot.repo"
@@ -287,6 +298,23 @@ class runbot_build(orm.Model):
 
         return self.spawn(cmd, lock_path, log_path, cpu_limit=None)
 
+    def checkout_update_odoo(self, build):
+        replace(build.server('service', 'db.py'), 'def exp_list(',
+                '''def exp_list(*args):
+    res = exp_list_origin(*args)
+    return [db for db in res if db.startswith('%s-')]
+
+def exp_list_origin(''' % build.dest)
+
+        replace(build.server('service', 'db.py'), 'def exp_create_database(',
+                '''def exp_create_database(*args):
+    db_name = args[0]
+    if not db_name.startswith('%s-'):
+        raise Exception("On runbot, you can create only database that starts with '%s-'")
+    return exp_create_database_origin(*args)
+
+def exp_create_database_origin(''' % (build.dest, build.dest))
+
     def checkout(self, cr, uid, ids, context=None):
         for build in self.browse(cr, uid, ids, context=context):
             # starts from scratch
@@ -366,7 +394,7 @@ class runbot_build(orm.Model):
                     )
                     shutil.rmtree(build.server('addons', basename))
                 shutil.move(module, build.server('addons'))
-
+            self.checkout_update_odoo(build)
             available_modules = [
                 os.path.basename(os.path.dirname(a))
                 for a in glob.glob(build.server('addons/*/__openerp__.py'))

@@ -306,6 +306,13 @@ class runbot_build(orm.Model):
 
 def exp_list_origin(''' % build.dest)
 
+        replace(build.server('service', 'db.py'), 'def list_dbs(',
+                '''def list_dbs(*args):
+    res = list_dbs_origin(*args)
+    return [db for db in res if db.startswith('%s-')]
+
+def list_dbs_origin(''' % build.dest)
+
         replace(build.server('service', 'db.py'), 'def exp_create_database(',
                 '''def exp_create_database(*args):
     db_name = args[0]

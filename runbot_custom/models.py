@@ -206,7 +206,7 @@ class runbot_build(orm.Model):
             cmd.append("--test-enable")
         cmd += ['--db-filter', '.*']
         cmd += ['-d', dbname, '-i', modules, '--stop-after-init', '--log-level=test', '--max-cron-threads=0']
-        return self.spawn(cmd, lock_path, log_path, cpu_limit=300)
+        return self.spawn(cmd, lock_path, log_path, cpu_limit=2100)
 
     def _install_and_test_saas(self, cr, uid, build, lock_path, log_path, suffix, modules):
         cmd = build.cmd_saas()

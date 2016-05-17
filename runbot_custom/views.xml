@@ -31,7 +31,7 @@
             <a t-if="bu['state']=='running'" t-attf-href="http://{{bu['domain_base']}}/" class="btn btn-success" title="Updated and explicit modules"><i class="fa fa-sign-in"/></a>
         </xpath>
         <xpath expr="//a[contains(@t-attf-href, 'job_20_test_all.txt')]/.." position="after">
-            <li t-if="bu['host']"><a t-attf-href="http://{{bu['host']}}/runbot/static/build/#{bu['real_dest']}/logs/job_30_run.txt">Run logs <i class="fa fa-file-text-o"/></a></li>
+            <li t-if="bu['host']"><a t-attf-href="http://{{bu['host']}}/runbot/static/build/#{bu['real_dest']}/logs/job_30_run.txt">Full run logs <i class="fa fa-file-text-o"/></a></li>
 
         </xpath>
 

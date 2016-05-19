@@ -351,6 +351,7 @@ def exp_create_database_origin(''' % (build.dest, build.dest))
             modules_to_test = ((build.branch_id.modules or '') + ',' +
                                (build.repo_id.modules or ''))
             modules_to_test = filter(None, modules_to_test.split(','))
+            auto_modules = filter(None, modules_to_test.split(','))
             explicit_modules = set(modules_to_test)
             _logger.debug("manual modules_to_test for build %s: %s", build.dest, modules_to_test)
 

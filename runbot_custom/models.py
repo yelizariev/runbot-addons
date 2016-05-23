@@ -206,7 +206,7 @@ class runbot_build(orm.Model):
             cmd.append("--test-enable")
         cmd += ['--db-filter', '.*']
         cmd += ['-d', dbname, '-i', modules, '--stop-after-init', '--log-level=test', '--max-cron-threads=0']
-        return self.spawn(cmd, lock_path, log_path, cpu_limit=2100)
+        return self.spawn(cmd, lock_path, log_path, cpu_limit=4200)
 
     def _install_and_test_saas(self, cr, uid, build, lock_path, log_path, suffix, modules):
         cmd = build.cmd_saas()
@@ -219,7 +219,7 @@ class runbot_build(orm.Model):
         ]
         build._log('_install_and_test_saas', 'run saas.py: %s' % fix_long_line(' '.join(cmd)))
         build.write({'job_start': now()})
-        return self.spawn(cmd, lock_path, log_path, cpu_limit=2100)
+        return self.spawn(cmd, lock_path, log_path, cpu_limit=4200)
 
     def job_10_test_base(self, cr, uid, build, lock_path, log_path):
         if build.repo_id.is_saas:
@@ -299,6 +299,10 @@ class runbot_build(orm.Model):
         return self.spawn(cmd, lock_path, log_path, cpu_limit=None)
 
     def checkout_update_odoo(self, build):
+        # increase timeout for phantom_js
+        replace(build.server('tests', 'common.py'), 'timeout=60', 'timeout=120')
+
+        # help cron workers in 8.0 to select only necessary databases
         replace(build.server('service', 'db.py'), 'def exp_list(',
                 '''def exp_list(*args):
     res = exp_list_origin(*args)
@@ -306,6 +310,7 @@ class runbot_build(orm.Model):
 
 def exp_list_origin(''' % build.dest)
 
+        # help cron workers in 9.0 to select only necessary databases
         replace(build.server('service', 'db.py'), 'def list_dbs(',
                 '''def list_dbs(*args):
     res = list_dbs_origin(*args)
@@ -313,6 +318,7 @@ def exp_list_origin(''' % build.dest)
 
 def list_dbs_origin(''' % build.dest)
 
+        # restriction for name of new databases
         replace(build.server('service', 'db.py'), 'def exp_create_database(',
                 '''def exp_create_database(*args):
     db_name = args[0]

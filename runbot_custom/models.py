@@ -238,7 +238,7 @@ class runbot_build(orm.Model):
             build._log('test_all', 'test all saas modules')
             return self._install_and_test_saas(cr, uid, build, lock_path, log_path, '%s--all' % build.dest, build.auto_modules)
 
-        build._log('test_all', 'Test all modules')
+        build._log('test_all', '============= Test all modules =============')
         return self._install_and_test(cr, uid, build, lock_path, log_path, "%s-all" % build.dest, build.auto_modules)
 
     def job_30_run(self, cr, uid, build, lock_path, log_path):

@@ -23,12 +23,15 @@ _logger = logging.getLogger(__name__)
 MAGIC_PID_RUN_NEXT_JOB = -2
 
 #http://stackoverflow.com/questions/39086/search-and-replace-a-line-in-a-file-in-python
-def replace(file, searchExp, replaceExp):
-    _logger.debug('replace(%s)', [file, searchExp, replaceExp])
-    for line in fileinput.input(file, inplace=1):
-        if searchExp in line:
-            line = line.replace(searchExp, replaceExp)
-        sys.stdout.write(line)
+def replace(filename, searchExp, replaceExp):
+    _logger.debug('replace(%s)', [filename, searchExp, replaceExp])
+    try:
+        for line in fileinput.input(filename, inplace=1):
+            if searchExp in line:
+                line = line.replace(searchExp, replaceExp)
+            sys.stdout.write(line)
+    except OSError:
+        _logger.warning('Cannot replace in file %s', filename, exc_info=True)
 
 
 class runbot_repo(orm.Model):

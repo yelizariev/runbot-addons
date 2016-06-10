@@ -47,6 +47,7 @@ class runbot_repo(orm.Model):
         'base': fields.function(_get_base, type='char', string='Base URL', readonly=1),
         'is_addons_dev': fields.boolean('addons-dev'),
         'is_saas': fields.boolean('odoo-saas-tools'),
+        'server_wide_modules': fields.char('server wide modules'),
     }
 
     def git_export_file(self, cr, uid, ids, treeish, dest, filename, context=None):
@@ -198,6 +199,7 @@ class runbot_build(orm.Model):
 
     _columns = {
         'auto_modules': fields.char("Filtered modules to test in *-all* installation"),
+        'unsafe_modules': fields.char("Unsafe modules to be checkouted"),
     }
 
 
@@ -340,11 +342,11 @@ def exp_create_database_origin(''' % (build.dest, build.dest))
             # runbot log path
             mkdirs([build.path("logs"), build.server('addons')])
 
+            repo_id, closest_name, server_match = build._get_closest_branch_name(build.branch_id.repo_id.id)
             # checkout branch
             build.branch_id.repo_id.git_export(build.name, build.path())
             if build.branch_id.repo_id.is_saas:
                 # checkout saas.py from base for security reasons
-                repo_id, closest_name, server_match = build._get_closest_branch_name(build.branch_id.repo_id.id)
                 build.branch_id.repo_id.git_export_file(closest_name, build.path(), 'saas.py')
 
             # v6 rename bin -> openerp
@@ -364,12 +366,23 @@ def exp_create_database_origin(''' % (build.dest, build.dest))
             _logger.debug("manual modules_to_test for build %s: %s", build.dest, modules_to_test)
 
             if not has_server:
+                repo_modules = [
+                    os.path.basename(os.path.dirname(a))
+                    for a in glob.glob(build.path('*/__openerp__.py'))
+                ]
+                _logger.debug("repo modules for build %s: %s", build.dest, repo_modules)
+
+                unsafe_modules = filter(None, (build.repo_id.server_wide_modules or '').split(','))
+                unsafe_modules = [m for m in unsafe_modules if m in repo_modules]
+                if unsafe_modules:
+                    for m in unsafe_modules:
+                        build.branch_id.repo_id.git_export_file(closest_name, build.path(), m)
+                    build._log('checkout', 'Following modules are checkouted to base version for security reasons: %s' % unsafe_modules)
+
+
+
                 if build.repo_id.modules_auto == 'repo':
-                    auto_modules += [
-                        os.path.basename(os.path.dirname(a))
-                        for a in glob.glob(build.path('*/__openerp__.py'))
-                    ]
-                    _logger.debug("repo modules for build %s: %s", build.dest, auto_modules)
+                    auto_modules += repo_modules
 
                 for extra_repo in build.repo_id.dependency_ids:
                     if build.repo_id.is_addons_dev:
@@ -431,6 +444,7 @@ def exp_create_database_origin(''' % (build.dest, build.dest))
             _logger.debug("auto_modules for build %s: %s", build.dest, auto_modules)
             build._log('checkout', 'modules to install: %s' % modules_to_test) 
             build.write({'server_match': server_match,
+                         'unsafe_modules': ','.join(unsafe_modules),
                          'auto_modules': ','.join(auto_modules),
                          'modules': ','.join(modules_to_test)})
 
@@ -553,7 +567,8 @@ def exp_create_database_origin(''' % (build.dest, build.dest))
                 build.path('openerp/addons')
             ])
             cmd += ['--addons-path', addons_path]
-
+            if build.repo_id.server_wide_modules:
+                cmd += ['--load', build.repo_id.server_wide_modules]
         # pass empty -d to override db_name in config
         cmd += ['--database=']
 

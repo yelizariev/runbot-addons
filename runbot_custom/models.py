@@ -591,6 +591,7 @@ def exp_create_database_origin(''' % (build.dest, build.dest))
                '--plan-template-db-name', '{suffix}---template',
                '--plan-clients', '{suffix}---client-%i',
                '--base-domain', base_domain,
+               '--odoo-db-filter=%d',
             ]
             if grep(build.server("tools/config.py"), "data-dir"):
                 datadir = build.path('datadir')

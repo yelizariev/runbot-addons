@@ -309,27 +309,27 @@ class runbot_build(orm.Model):
 
         # help cron workers in 8.0 to select only necessary databases
         replace(build.server('service', 'db.py'), 'def exp_list(',
-                '''def exp_list(*args):
-    res = exp_list_origin(*args)
+                '''def exp_list(*args, **kwargs):
+    res = exp_list_origin(*args, **kwargs)
     return [db for db in res if db.startswith('%s-')]
 
 def exp_list_origin(''' % build.dest)
 
         # help cron workers in 9.0 to select only necessary databases
         replace(build.server('service', 'db.py'), 'def list_dbs(',
-                '''def list_dbs(*args):
-    res = list_dbs_origin(*args)
+                '''def list_dbs(*args, **kwargs):
+    res = list_dbs_origin(*args, **kwargs)
     return [db for db in res if db.startswith('%s-')]
 
 def list_dbs_origin(''' % build.dest)
 
         # restriction for name of new databases
         replace(build.server('service', 'db.py'), 'def exp_create_database(',
-                '''def exp_create_database(*args):
+                '''def exp_create_database(*args, **kwargs):
     db_name = args[0]
     if not db_name.startswith('%s-'):
         raise Exception("On runbot, you can create only database that starts with '%s-'")
-    return exp_create_database_origin(*args)
+return exp_create_database_origin(*args, **kwargs)
 
 def exp_create_database_origin(''' % (build.dest, build.dest))
 

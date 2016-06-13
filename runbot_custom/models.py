@@ -240,7 +240,7 @@ class runbot_build(orm.Model):
             return MAGIC_PID_RUN_NEXT_JOB
 
         if build.repo_id.is_saas:
-            build._log('test_all', 'test all saas modules')
+            build._log('test_all', '=============  test all SAAS modules =============')
             return self._install_and_test_saas(cr, uid, build, lock_path, log_path, '%s--all' % build.dest, build.auto_modules)
 
         build._log('test_all', '============= Test all modules =============')

@@ -336,6 +336,16 @@ def list_dbs_origin(''' % build.dest)
 
 def exp_create_database_origin(''' % (build.dest, build.dest))
 
+        # restriction for name of duplicated databases
+        replace(build.server('service', 'db.py'), 'def exp_duplicate_database(',
+                '''def exp_duplicate_database(*args, **kwargs):
+    db_name = args[1]
+    if not db_name.startswith('%s-'):
+        raise Exception("On runbot, you can create only database that starts with '%s-'")
+    return exp_duplicate_database_origin(*args, **kwargs)
+
+def exp_duplicate_database_origin(''' % (build.dest, build.dest))
+
     def checkout(self, cr, uid, ids, context=None):
         for build in self.browse(cr, uid, ids, context=context):
             # starts from scratch

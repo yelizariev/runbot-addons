@@ -273,7 +273,10 @@ class runbot_build(orm.Model):
         # run server
         cmd, mods = build.cmd()
         if os.path.exists(build.server('addons/im_livechat')):
-            cmd += ["--workers", "2"]
+            if build.branch_id.repo_id.is_saas:
+                cmd += ["--workers", "3"]
+            else:
+                cmd += ["--workers", "2"]
             cmd += ["--longpolling-port", "%d" % (build.port + 1)]
             cmd += ["--max-cron-threads", "1"]
         else:

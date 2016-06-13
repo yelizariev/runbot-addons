@@ -329,7 +329,7 @@ def list_dbs_origin(''' % build.dest)
     db_name = args[0]
     if not db_name.startswith('%s-'):
         raise Exception("On runbot, you can create only database that starts with '%s-'")
-return exp_create_database_origin(*args, **kwargs)
+    return exp_create_database_origin(*args, **kwargs)
 
 def exp_create_database_origin(''' % (build.dest, build.dest))
 

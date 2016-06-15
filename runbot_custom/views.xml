@@ -25,6 +25,8 @@
             <li t-if="bu['host']"><a t-attf-href="http://{{bu['host']}}/runbot/static/build/#{bu['real_dest']}/logs/job_30_run.txt">Full run logs <i class="fa fa-file-text-o"/></a></li>
 
         </xpath>
+        <xpath expr="//t[@t-if=&quot;bu['state']=='running'&quot;]" position="replace">
+        </xpath>
 
     </template>
 

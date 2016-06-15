@@ -202,7 +202,10 @@ class runbot_build(orm.Model):
         domain = self.pool['runbot.repo'].domain(cr, uid)
         for build in self.browse(cr, uid, ids, context=context):
             if build.repo_id.nginx:
-                result[build.id] = "%s.%s" % (build.dest, build.host)
+                if build.repo_id.is_saas:
+                    result[build.id] = "%s--%s---portal.%s" % (build.dest, 'all', build.host)
+                else:
+                    result[build.id] = "%s.%s" % (build.dest, build.host)
             else:
                 result[build.id] = "%s:%s" % (domain, build.port)
         return result

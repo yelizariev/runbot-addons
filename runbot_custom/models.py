@@ -728,3 +728,39 @@ class RunbotControllerCustom(RunbotController):
                 v = '%s-%s' % (dest, t)
             res[k] = '%s.%s' % (v, build.host)
         return res
+
+    @http.route(['/runbot/b/<branch_name>', '/runbot/<model("runbot.repo"):repo>/<branch_name>'], type='http', auth="public", website=True)
+    def fast_launch(self, branch_name=False, repo=False, **post):
+        pool, cr, uid, context = request.registry, request.cr, request.uid, request.context
+        Build = pool['runbot.build']
+
+        domain = [('branch_id.branch_name', '=', branch_name)]
+
+        if repo:
+            domain.extend([('branch_id.repo_id', '=', repo.id)])
+            order="sequence desc"
+        else:
+            order = 'repo_id ASC, sequence DESC'
+
+        # Take the 10 lasts builds to find at least 1 running... Else no luck
+        builds = Build.search(cr, uid, domain, order=order, limit=10, context=context)
+
+        if builds:
+            last_build = False
+            for build in Build.browse(cr, uid, builds, context=context):
+                if build.state == 'running' or (build.state == 'duplicate' and build.duplicate_id.state == 'running'):
+                    last_build = build if build.state == 'running' else build.duplicate_id
+                    break
+
+            if not last_build:
+                # Find the last build regardless the state to propose a rebuild
+                last_build = Build.browse(cr, uid, builds[0], context=context)
+
+            if last_build.state != 'running':
+                url = "/runbot/build/%s?ask_rebuild=1" % last_build.id
+            else:
+                url = ("http://%s/login?db=%s-all&login=admin&key=admin%s" %
+                       (last_build.domain, last_build.dest, "&redirect=/web?debug=1" if not build.branch_id.branch_name.startswith('7.0') else ''))
+        else:
+            return request.not_found()
+        return werkzeug.utils.redirect(url)

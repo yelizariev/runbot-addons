@@ -197,9 +197,20 @@ def fix_long_line(s):
 class runbot_build(orm.Model):
     _inherit = "runbot.build"
 
+    def _get_domain(self, cr, uid, ids, field_name, arg, context=None):
+        result = {}
+        domain = self.pool['runbot.repo'].domain(cr, uid)
+        for build in self.browse(cr, uid, ids, context=context):
+            if build.repo_id.nginx:
+                result[build.id] = "%s.%s" % (build.dest, build.host)
+            else:
+                result[build.id] = "%s:%s" % (domain, build.port)
+        return result
+
     _columns = {
         'auto_modules': fields.char("Filtered modules to test in *-all* installation"),
         'unsafe_modules': fields.char("Unsafe modules to be checkouted"),
+        'domain': fields.function(_get_domain, type='char', string='URL'),
     }
 
 

@@ -205,7 +205,7 @@ class runbot_build(orm.Model):
                 if build.repo_id.is_saas:
                     result[build.id] = "%s--%s---portal.%s" % (build.dest, 'all', build.host)
                 else:
-                    result[build.id] = "%s.%s" % (build.dest, build.host)
+                    result[build.id] = "%s-%s.%s" % (build.dest, 'all', build.host)
             else:
                 result[build.id] = "%s:%s" % (domain, build.port)
         return result

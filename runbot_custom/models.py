@@ -733,6 +733,8 @@ def exp_duplicate_database_origin(''' % (build.dest, build.dest))
         actives = set(b[0] for b in cr.fetchall())
 
         for b in builds:
+            if b in actives:
+                continue
             paths = [
                 os.path.join(build_dir, b, 'datadir'),
                 os.path.join(build_dir, b, 'doc'),
@@ -740,7 +742,7 @@ def exp_duplicate_database_origin(''' % (build.dest, build.dest))
                 os.path.join(build_dir, b, 'openerp', 'addons'),
             ]
             for path in paths:
-                if b not in actives and os.path.isdir(path):
+                if os.path.isdir(path):
                     _logger.debug('rmtree %s', path)
                     shutil.rmtree(path)
 

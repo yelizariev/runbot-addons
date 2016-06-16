@@ -715,6 +715,36 @@ def exp_duplicate_database_origin(''' % (build.dest, build.dest))
             if build.state == 'done':
                 build._local_cleanup()
 
+    def _local_cleanup(self, cr, uid, ids, context=None):
+        super(runbot_build, self)._local_cleanup(cr, uid, ids, context)
+
+        # Clean heavy folders in 1 hour after stopping
+        # Basically, we need to keep logs only (for 7 days)
+        root = self.pool['runbot.repo'].root(cr, uid)
+        build_dir = os.path.join(root, 'build')
+        builds = os.listdir(build_dir)
+        cr.execute("""
+            SELECT dest
+              FROM runbot_build
+             WHERE dest IN %s
+               AND (state = 'done' AND job_end > (now() - interval '1 hour'))
+        """, [tuple(builds)])
+        actives = set(b[0] for b in cr.fetchall())
+
+        for b in builds:
+            paths = [
+                os.path.join(build_dir, b, 'datadir'),
+                os.path.join(build_dir, b, 'doc'),
+                os.path.join(build_dir, b, 'setup'),
+                os.path.join(build_dir, b, 'openerp', 'addons'),
+            ]
+            for path in paths:
+                if b not in actives and os.path.isdir(path):
+                    _logger.info('rmtree %s', path)
+                    shutil.rmtree(path)
+
+
+
 class RunbotControllerCustom(RunbotController):
 
     def build_info(self, build):

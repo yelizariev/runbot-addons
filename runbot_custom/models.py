@@ -740,7 +740,7 @@ def exp_duplicate_database_origin(''' % (build.dest, build.dest))
             ]
             for path in paths:
                 if b not in actives and os.path.isdir(path):
-                    _logger.info('rmtree %s', path)
+                    _logger.debug('rmtree %s', path)
                     shutil.rmtree(path)
 
 

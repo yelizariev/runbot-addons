@@ -46,6 +46,7 @@ class runbot_repo(orm.Model):
         return result
 
     _columns = {
+        'nickname': fields.char('Nickname', help='Name to be used in fast_launch'),
         'base': fields.function(_get_base, type='char', string='Base URL', readonly=1),
         'is_addons_dev': fields.boolean('addons-dev'),
         'is_saas': fields.boolean('odoo-saas-tools'),
@@ -762,8 +763,8 @@ class RunbotControllerCustom(RunbotController):
             res[k] = '%s.%s' % (v, build.host)
         return res
 
-    @http.route(['/runbot/b/<branch_name>', '/runbot/<model("runbot.repo"):repo>/<branch_name>'], type='http', auth="public", website=True)
-    def fast_launch(self, branch_name=False, repo=False, **post):
+    @http.route(['/runbot/b/<branch_name>', '/runbot/<model("runbot.repo"):repo>/<branch_name>', '/demo/<nickname>/<branch_name>'], type='http', auth="public", website=True)
+    def fast_launch(self, branch_name=False, repo=False, nickname=False, **post):
         pool, cr, uid, context = request.registry, request.cr, request.uid, request.context
         Build = pool['runbot.build']
 
@@ -771,6 +772,9 @@ class RunbotControllerCustom(RunbotController):
 
         if repo:
             domain.extend([('branch_id.repo_id', '=', repo.id)])
+            order="sequence desc"
+        elif nickname:
+            domain.extend([('branch_id.repo_id.nickname', '=', nickname)])
             order="sequence desc"
         else:
             order = 'repo_id ASC, sequence DESC'

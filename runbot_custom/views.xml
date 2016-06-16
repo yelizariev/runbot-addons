@@ -10,6 +10,7 @@
                 <field name="is_addons_dev"/>
                 <field name="is_saas"/>
                 <field name="server_wide_modules"/>
+                <field name="nickname"/>
             </xpath>
         </field>
     </record>

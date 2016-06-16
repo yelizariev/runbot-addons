@@ -728,7 +728,7 @@ def exp_duplicate_database_origin(''' % (build.dest, build.dest))
             SELECT dest
               FROM runbot_build
              WHERE dest IN %s
-               AND (state = 'done' AND job_end > (now() - interval '1 hour'))
+               AND (state = 'done' AND job_end < (now() - interval '1 hour'))
         """, [tuple(builds)])
         actives = set(b[0] for b in cr.fetchall())
 

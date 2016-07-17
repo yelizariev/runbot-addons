@@ -328,6 +328,11 @@ class runbot_build(orm.Model):
         # increase timeout for phantom_js
         replace(build.server('tests', 'common.py'), 'timeout=60', 'timeout=120')
 
+        # increase timeout in _wait_remaining_requests, because it could dump too much logs
+        replace(build.server('tests', 'common.py'), 'thread.join(0.05)', 'thread.join(5)')
+        replace(build.server('tests', 'common.py'), 'thread.sleep(0.05)', 'thread.sleep(5)')
+
+
         # help cron workers in 8.0 to select only necessary databases
         replace(build.server('service', 'db.py'), 'def exp_list(',
                 '''def exp_list(*args, **kwargs):
@@ -365,6 +370,7 @@ def exp_create_database_origin(''' % (build.dest, build.dest))
 def exp_duplicate_database_origin(''' % (build.dest, build.dest))
 
     def checkout(self, cr, uid, ids, context=None):
+        context = context or {}
         for build in self.browse(cr, uid, ids, context=context):
             # starts from scratch
             if os.path.isdir(build.path()):
@@ -496,7 +502,12 @@ def exp_duplicate_database_origin(''' % (build.dest, build.dest))
 
         build = self.browse(cr, uid, ids[0], context=context)
         branch, repo = build.branch_id, build.repo_id
-        pi = branch._get_pull_info()
+        pi = context and context.get('pull_info')
+        if not pi:
+            pi = branch._get_pull_info()
+            if context:
+                context['pull_info'] = pi
+
         name = pi['base']['ref'] if pi else branch.branch_name
         if build.repo_id.is_addons_dev:
             m = re.search('-([0-9]+\.[0-9]+)-', name)

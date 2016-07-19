@@ -50,6 +50,7 @@ class runbot_repo(orm.Model):
         'base': fields.function(_get_base, type='char', string='Base URL', readonly=1),
         'is_addons_dev': fields.boolean('addons-dev'),
         'is_saas': fields.boolean('odoo-saas-tools'),
+        'run_tests': fields.boolean('Run tests', default=True),
         'server_wide_modules': fields.char('server wide modules'),
     }
 
@@ -225,7 +226,7 @@ class runbot_build(orm.Model):
         build._log('_install_and_test', 'DB: %s, Modules: %s' % (dbname, fix_long_line(modules)))
         self._local_pg_createdb(cr, uid, dbname)
         cmd, mods = build.cmd()
-        if grep(build.server("tools/config.py"), "test-enable"):
+        if build.repo_id.run_tests and grep(build.server("tools/config.py"), "test-enable"):
             cmd.append("--test-enable")
         cmd += ['--db-filter', '.*']
         cmd += ['-d', dbname, '-i', modules, '--stop-after-init', '--log-level=test', '--max-cron-threads=0']
@@ -236,10 +237,11 @@ class runbot_build(orm.Model):
         cmd += ['--portal-create',
                 '--server-create',
                 '--plan-create',
-                '--test',
                 '--suffix', suffix,
                 '--install-modules', modules,
         ]
+        if build.repo_id.run_tests:
+            cmd.append("--test-enable")
         build._log('_install_and_test_saas', 'run saas.py: %s' % fix_long_line(' '.join(cmd)))
         build.write({'job_start': now()})
         return self.spawn(cmd, lock_path, log_path, cpu_limit=4200)

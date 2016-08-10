@@ -239,6 +239,7 @@ class runbot_build(orm.Model):
                 '--plan-create',
                 '--suffix', suffix,
                 '--install-modules', modules,
+                '--test',
         ]
         if build.repo_id.run_tests:
             cmd.append("--test-enable")

@@ -17,7 +17,7 @@ import openerp
 from openerp.osv import orm, fields
 from openerp.addons.runbot.runbot import mkdirs, uniq_list, now, grep, locked, fqdn, rfind, _re_error, _re_warning, RunbotController, decode_utf, run, dt2time
 from openerp.tools import config, appdirs
-from openerp import http
+from openerp import http, SUPERUSER_ID
 from openerp.http import request
 
 _logger = logging.getLogger(__name__)
@@ -242,7 +242,7 @@ class runbot_build(orm.Model):
                 '--test',
         ]
         if build.repo_id.run_tests:
-            cmd.append("--test-enable")
+            cmd.append("--odoo-test-enable")
         build._log('_install_and_test_saas', 'run saas.py: %s' % fix_long_line(' '.join(cmd)))
         build.write({'job_start': now()})
         return self.spawn(cmd, lock_path, log_path, cpu_limit=4200)
@@ -328,6 +328,9 @@ class runbot_build(orm.Model):
         return self.spawn(cmd, lock_path, log_path, cpu_limit=None)
 
     def checkout_update_odoo(self, build):
+        # update default smtp to new value (see https://github.com/it-projects-llc/odoo-runbot-docker )
+        replace(build.server('addons', 'base', 'base_data.xml'), '>localhost<', '>postfix<')
+
         # increase timeout for phantom_js
         replace(build.server('tests', 'common.py'), 'timeout=60', 'timeout=120')
 
@@ -371,6 +374,16 @@ def exp_create_database_origin(''' % (build.dest, build.dest))
     return exp_duplicate_database_origin(*args, **kwargs)
 
 def exp_duplicate_database_origin(''' % (build.dest, build.dest))
+
+        # restriction for new name on renaming  databases
+        replace(build.server('service', 'db.py'), 'def exp_rename(',
+                '''def exp_rename(*args, **kwargs):
+    db_name = args[1]
+    if not db_name.startswith('%s-'):
+        raise Exception("On runbot, you can use only database name that starts with '%s-'")
+    return exp_rename_origin(*args, **kwargs)
+
+def exp_rename_origin(''' % (build.dest, build.dest))
 
     def checkout(self, cr, uid, ids, context=None):
         context = context or {}
@@ -778,6 +791,18 @@ class RunbotControllerCustom(RunbotController):
                 v = '%s-%s' % (dest, t)
             res[k] = '%s.%s' % (v, build.host)
         return res
+
+    @http.route(['/runbot/hook/<repo_id>'], type='http', auth="public", website=True)
+    def hook(self, repo_id=None, **post):
+        # TODO if repo_id == None parse the json['repository']['ssh_url'] and find the right repo
+        res = request.registry['runbot.repo'].search(request.cr, SUPERUSER_ID, [('nickname', '=', repo_id)])
+        if res:
+            repo_id = res[0]
+        else:
+            repo_id = int(repo_id)
+        repo = request.registry['runbot.repo'].browse(request.cr, SUPERUSER_ID, [repo_id])
+        repo.hook_time = datetime.datetime.now().strftime(openerp.tools.DEFAULT_SERVER_DATETIME_FORMAT)
+        return ""
 
     @http.route(['/runbot/b/<branch_name>', '/runbot/<model("runbot.repo"):repo>/<branch_name>', '/demo/<nickname>/<branch_name>'], type='http', auth="public", website=True)
     def fast_launch(self, branch_name=False, repo=False, nickname=False, **post):

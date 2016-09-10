@@ -22,6 +22,8 @@ from openerp.http import request
 
 _logger = logging.getLogger(__name__)
 
+BRANCH_REGEXP = r'^([0-9]+\.[0-9]+)(-|$)'
+
 MAGIC_PID_RUN_NEXT_JOB = -2
 
 #http://stackoverflow.com/questions/39086/search-and-replace-a-line-in-a-file-in-python
@@ -201,6 +203,49 @@ def fix_long_line(s):
 class runbot_build(orm.Model):
     _inherit = "runbot.build"
 
+
+    def job_01_check_branch_name(self, cr, uid, build, lock_path, log_path):
+        branch = build.branch_id
+        pi = branch._get_pull_info()
+        if not pi:
+            build._log('check_branch_name', 'Enable to get pull info')
+
+            return MAGIC_PID_RUN_NEXT_JOB
+
+        # PR branch name, e.g. 	8.0-mail_private
+        head = branch.pull_head_name
+        # Target branch name, e.g. 8.0
+        base = pi['base']['ref']
+
+        success = True
+        description = "Branch names are correct"
+        for name, value in [('Base', base), ('Head', head)]:
+            m = re.search(BRANCH_REGEXP, value)
+            if not m:
+                build._log('check_branch_name', "Wrong %s branch name: %s. It has to be following format: %s (e.g. 9.0, 9.0-feature)" % (name, value, BRANCH_REGEXP))
+                description = "Wrong branch name format: %s" % value
+                success = False
+
+        if success:
+            base_version = re.search(BRANCH_REGEXP, base).group(1)
+            head_version = re.search(BRANCH_REGEXP, head).group(1)
+            if head_version != base_version:
+                build._log('check_branch_name', "Head and Base have different prefixes: %s and %s. Probably, pull request is made to a wrong branch" % (head_version, base_version))
+                description = "Branch names are mismatched: %s != %s" % (base_version, head_version)
+                success = False
+        runbot_domain = self.pool['runbot.repo'].domain(cr, uid)
+        state = 'success' if success else 'failure'
+        status = {
+            "state": state,
+            "target_url": "http://%s/runbot/build/%s" % (runbot_domain, build.id),
+            "description": description,
+            "context": "ci/branches"
+        }
+        build._log('check_branch_name', '%s' % state)
+        build.repo_id.github('/repos/:owner/:repo/statuses/%s' % build.name, status, ignore_errors=True)
+
+        return MAGIC_PID_RUN_NEXT_JOB
+
     def _get_domain(self, cr, uid, ids, field_name, arg, context=None):
         result = {}
         domain = self.pool['runbot.repo'].domain(cr, uid)
@@ -304,7 +349,7 @@ class runbot_build(orm.Model):
             # not sure, to avoid old server to check other dbs
             cmd += ["--max-cron-threads", "0"]
 
-        # comment out origin config. See cmd()
+        # comment out origin code. We override exp_list function to allow cron use only databases, which starts with build.dest
         #cmd += ['-d', "%s-all" % build.dest]
 
         if grep(build.server("tools/config.py"), "db-filter"):
@@ -627,8 +672,6 @@ def exp_rename_origin(''' % (build.dest, build.dest))
             cmd += ['--addons-path', addons_path]
             if build.repo_id.server_wide_modules:
                 cmd += ['--load', build.repo_id.server_wide_modules]
-        # pass empty -d to override db_name in config
-        cmd += ['--database=']
 
         if not modules:
             modules = 'base'

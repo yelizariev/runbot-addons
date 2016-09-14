@@ -219,20 +219,23 @@ class runbot_build(orm.Model):
 
         success = True
         description = "Branch names are correct"
-        for name, value in [('Base', base), ('Head', head)]:
-            m = re.search(BRANCH_REGEXP, value)
-            if not m:
-                build._log('check_branch_name', "Wrong %s branch name: %s. It has to be following format: %s (e.g. 9.0, 9.0-feature)" % (name, value, BRANCH_REGEXP))
-                description = "Wrong branch name format: %s" % value
-                success = False
+        if head.startswith(base):
+            pass
+        else:
+            for name, value in [('Base', base), ('Head', head)]:
+                m = re.search(BRANCH_REGEXP, value)
+                if not m:
+                    build._log('check_branch_name', "Wrong %s branch name: %s. It has to be following format: %s (e.g. 9.0, 9.0-feature)" % (name, value, BRANCH_REGEXP))
+                    description = "Wrong branch name format: %s" % value
+                    success = False
 
-        if success:
-            base_version = re.search(BRANCH_REGEXP, base).group(1)
-            head_version = re.search(BRANCH_REGEXP, head).group(1)
-            if head_version != base_version:
-                build._log('check_branch_name', "Head and Base have different prefixes: %s and %s. Probably, pull request is made to a wrong branch" % (head_version, base_version))
-                description = "Branch names are mismatched: %s != %s" % (base_version, head_version)
-                success = False
+            if success:
+                base_version = re.search(BRANCH_REGEXP, base).group(1)
+                head_version = re.search(BRANCH_REGEXP, head).group(1)
+                if head_version != base_version:
+                    build._log('check_branch_name', "Head and Base have different prefixes: %s and %s. Probably, pull request is made to a wrong branch" % (head_version, base_version))
+                    description = "Branch names are mismatched: %s != %s" % (base_version, head_version)
+                    success = False
         runbot_domain = self.pool['runbot.repo'].domain(cr, uid)
         state = 'success' if success else 'failure'
         status = {

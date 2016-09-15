@@ -222,20 +222,31 @@ class runbot_build(orm.Model):
         if head.startswith(base):
             pass
         else:
-            for name, value in [('Base', base), ('Head', head)]:
-                m = re.search(BRANCH_REGEXP, value)
+            m = re.search(BRANCH_REGEXP, base)
+            if not m:
+                # base has wrong format
+                build._log('check_branch_name', "Wrong branch name: {head}. It has to be started with {base} (e.g. {base}, {base}-feature)".format(base=base, head=head))
+                description = "Wrong branch name: %s" % head
+                success = False
+
+            if success:
+                m = re.search(BRANCH_REGEXP, head)
+                base_version = re.search(BRANCH_REGEXP, base).group(1)
                 if not m:
-                    build._log('check_branch_name', "Wrong %s branch name: %s. It has to be following format: %s (e.g. 9.0, 9.0-feature)" % (name, value, BRANCH_REGEXP))
-                    description = "Wrong branch name format: %s" % value
+                    # head has wrong format
+                    build._log('check_branch_name', "Wrong branch name format: {head}. It has to be following format: {BRANCH_REGEXP} (e.g. {base_version}, {base_version}-feature)".format(base_version=base_version, head=head, BRANCH_REGEXP=BRANCH_REGEXP))
+                    description = "Wrong branch name format: %s" % head
                     success = False
 
             if success:
+                # correct formats
                 base_version = re.search(BRANCH_REGEXP, base).group(1)
                 head_version = re.search(BRANCH_REGEXP, head).group(1)
                 if head_version != base_version:
                     build._log('check_branch_name', "Head and Base have different prefixes: %s and %s. Probably, pull request is made to a wrong branch" % (head_version, base_version))
                     description = "Branch names are mismatched: %s != %s" % (base_version, head_version)
                     success = False
+
         runbot_domain = self.pool['runbot.repo'].domain(cr, uid)
         state = 'success' if success else 'failure'
         status = {

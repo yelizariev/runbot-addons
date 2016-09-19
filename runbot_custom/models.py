@@ -397,6 +397,9 @@ class runbot_build(orm.Model):
         replace(build.server('tests', 'common.py'), 'thread.join(0.05)', 'thread.join(5)')
         replace(build.server('tests', 'common.py'), 'thread.sleep(0.05)', 'thread.sleep(5)')
 
+        # always close cron db connnections
+        replace(build.server('service', 'server.py'), 'if len(db_names) > 1:', 'if True:')
+
 
         # help cron workers in 8.0 to select only necessary databases
         replace(build.server('service', 'db.py'), 'def exp_list(',

@@ -684,7 +684,7 @@ def exp_rename_origin(''' % (build.dest, build.dest))
         for build in self.browse(cr, uid, ids, context=context):
             # add addons path in order to ignore runbot config
             addons_path = ','.join([
-                build.path('openerp/addons')
+                build.server('addons')
             ])
             cmd += ['--addons-path', addons_path]
             if build.repo_id.server_wide_modules:
@@ -720,7 +720,7 @@ def exp_rename_origin(''' % (build.dest, build.dest))
                     logdb = 'postgres://{cfg[db_user]}:{cfg[db_password]}@{cfg[db_host]}/{db}'.format(cfg=config, db=cr.dbname)
                 cmd += ["--odoo-log-db=%s" % logdb]
             addons_path = ','.join([
-                build.path('openerp/addons')
+                build.server('addons')
             ])
             cmd += ['--odoo-addons-path', addons_path]
 

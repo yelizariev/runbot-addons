@@ -806,7 +806,7 @@ def exp_rename_origin(''' % (build.dest, build.dest))
     def _local_cleanup(self, cr, uid, ids, context=None):
         super(runbot_build, self)._local_cleanup(cr, uid, ids, context)
 
-        # Clean heavy folders in 1 hour after stopping
+        # Clean heavy folders shortly after stopping
         # Basically, we need to keep logs only (for 7 days)
         root = self.pool['runbot.repo'].root(cr, uid)
         build_dir = os.path.join(root, 'build')
@@ -815,7 +815,7 @@ def exp_rename_origin(''' % (build.dest, build.dest))
             SELECT dest
               FROM runbot_build
              WHERE dest IN %s
-               AND (state != 'done' OR job_end > (now() - interval '1 hour'))
+               AND (state != 'done' OR job_end > (now() - interval '20 minutes'))
         """, [tuple(builds)])
         actives = set(b[0] for b in cr.fetchall())
 

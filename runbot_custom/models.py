@@ -827,6 +827,7 @@ def exp_rename_origin(''' % (build.dest, build.dest))
                 os.path.join(build_dir, b, 'doc'),
                 os.path.join(build_dir, b, 'setup'),
                 os.path.join(build_dir, b, 'openerp', 'addons'),
+                os.path.join(build_dir, b, 'odoo', 'addons'),
             ]
             for path in paths:
                 if os.path.isdir(path):

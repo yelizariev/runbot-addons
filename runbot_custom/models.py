@@ -75,6 +75,13 @@ class runbot_repo(orm.Model):
         ids = self.search(cr, uid, [('mode', '=', 'disabled')], context=context)
         self.update(cr, uid, ids, context=context)
 
+    def update(self, cr, uid, ids, context=None):
+        for repo in self.browse(cr, uid, ids, context=context):
+            try:
+                self.update_git(cr, uid, repo)
+            except subprocess.CalledProcessError:
+                _logger.exception('Ignored git error while updating repo %s', repo.name)
+
     def update_git(self, cr, uid, repo, context=None):
         _logger.debug('repo %s updating branches', repo.name)
 

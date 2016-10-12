@@ -490,7 +490,8 @@ def exp_rename_origin(''' % (build.dest, build.dest))
             if not has_server:
                 repo_modules = [
                     os.path.basename(os.path.dirname(a))
-                    for a in glob.glob(build.path('*/__openerp__.py'))
+                    for a in (glob.glob(build.path('*/__openerp__.py')) +
+                              glob.glob(build.path('*/__manifest__.py')))
                 ]
                 _logger.debug("repo modules for build %s: %s", build.dest, repo_modules)
 
@@ -532,7 +533,8 @@ def exp_rename_origin(''' % (build.dest, build.dest))
                 # Finally mark all addons to move to openerp/addons
                 modules_to_move += [
                     os.path.dirname(module)
-                    for module in glob.glob(build.path('*/__openerp__.py'))
+                    for module in (glob.glob(build.path('*/__openerp__.py')) +
+                                   glob.glob(build.path('*/__manifest__.py')))
                 ]
 
             # move all addons to server addons path
@@ -548,7 +550,8 @@ def exp_rename_origin(''' % (build.dest, build.dest))
             self.checkout_update_odoo(build)
             available_modules = [
                 os.path.basename(os.path.dirname(a))
-                for a in glob.glob(build.server('addons/*/__openerp__.py'))
+                for a in (glob.glob(build.path('*/__openerp__.py')) +
+                          glob.glob(build.path('*/__manifest__.py')))
             ]
             if build.repo_id.modules_auto == 'all' or (build.repo_id.modules_auto != 'none' and has_server):
                 auto_modules += available_modules

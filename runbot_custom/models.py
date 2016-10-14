@@ -156,7 +156,7 @@ class runbot_repo(orm.Model):
                         # new order keeps lowest skipped sequence
                         build_info['sequence'] = skipped_build_sequences[0]['sequence']
                 Build.create(cr, uid, build_info)
-            if i == 100:
+            if i == 10:
                 _logger.debug('Force commit new branches')
                 i = 0
                 cr.commit()

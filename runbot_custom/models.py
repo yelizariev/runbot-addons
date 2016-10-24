@@ -550,8 +550,8 @@ def exp_rename_origin(''' % (build.dest, build.dest))
             self.checkout_update_odoo(build)
             available_modules = [
                 os.path.basename(os.path.dirname(a))
-                for a in (glob.glob(build.path('*/__openerp__.py')) +
-                          glob.glob(build.path('*/__manifest__.py')))
+                for a in (glob.glob(build.path('addons/*/__openerp__.py')) +
+                          glob.glob(build.path('addons/*/__manifest__.py')))
             ]
             if build.repo_id.modules_auto == 'all' or (build.repo_id.modules_auto != 'none' and has_server):
                 auto_modules += available_modules
@@ -874,6 +874,27 @@ class RunbotControllerCustom(RunbotController):
         repo = request.registry['runbot.repo'].browse(request.cr, SUPERUSER_ID, [repo_id])
         repo.hook_time = datetime.datetime.now().strftime(openerp.tools.DEFAULT_SERVER_DATETIME_FORMAT)
         return ""
+
+    @http.route([
+        '/runbot/badge/<repo_id_or_nickname>/<branch>.svg',
+        '/runbot/badge/<any(default,flat):theme>/<repo_id_or_nickname>/<branch>.svg',
+    ], type="http", auth="public", methods=['GET', 'HEAD'])
+    def badge(self, repo_id_or_nickname, branch, theme='default', nickname=None):
+        repo_id = None
+        nickname = None
+        try:
+            repo_id = int(repo_id_or_nickname)
+        except:
+            nickname = repo_id_or_nickname
+
+        if nickname:
+            repo_id = request.registry['runbot.repo'].search(
+                request.cr, SUPERUSER_ID,
+                [('nickname', '=', nickname)])
+            if repo_id:
+                repo_id = repo_id[0]
+
+        return super(RunbotControllerCustom, self).badge(repo_id, branch, theme)
 
     @http.route(['/runbot/b/<branch_name>', '/runbot/<model("runbot.repo"):repo>/<branch_name>', '/demo/<nickname>/<branch_name>'], type='http', auth="public", website=True)
     def fast_launch(self, branch_name=False, repo=False, nickname=False, **post):

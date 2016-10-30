@@ -550,8 +550,8 @@ def exp_rename_origin(''' % (build.dest, build.dest))
             self.checkout_update_odoo(build)
             available_modules = [
                 os.path.basename(os.path.dirname(a))
-                for a in (glob.glob(build.path('addons/*/__openerp__.py')) +
-                          glob.glob(build.path('addons/*/__manifest__.py')))
+                for a in (glob.glob(build.server('addons/*/__openerp__.py')) +
+                          glob.glob(build.server('addons/*/__manifest__.py')))
             ]
             if build.repo_id.modules_auto == 'all' or (build.repo_id.modules_auto != 'none' and has_server):
                 auto_modules += available_modules

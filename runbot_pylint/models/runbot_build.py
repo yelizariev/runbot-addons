@@ -192,12 +192,8 @@ class RunbotBuild(models.Model):
         return build.spawn([fname_pylint_run_sh],
                            lock_path, log_path, cpu_limit=2100)
 
-    def job_30_run(self, cr, uid, build, lock_path, log_path):
-        """
-        Inherit method to make logs from pylint errors
-        """
-        res = super(RunbotBuild, self).job_30_run(
-            cr, uid, build, lock_path, log_path)
+    def check_pylint_result(self, cr, uid, build):
+        res = True
         pylint_log = build.path('logs', 'job_15_pylint.txt')
         count = 0
         if not os.path.isfile(pylint_log):

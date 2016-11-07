@@ -17,7 +17,7 @@ import openerp
 from openerp.osv import orm, fields
 from openerp.addons.runbot.runbot import mkdirs, uniq_list, now, grep, locked, fqdn, rfind, _re_error, _re_warning, RunbotController, decode_utf, run, dt2time
 from openerp.tools import config, appdirs
-from openerp import http, SUPERUSER_ID
+from openerp import http, SUPERUSER_ID, api
 from openerp.http import request
 
 _logger = logging.getLogger(__name__)
@@ -333,6 +333,11 @@ class runbot_build(orm.Model):
         build._log('test_all', '============= Test all modules =============')
         return self._install_and_test(cr, uid, build, lock_path, log_path, "%s-all" % build.dest, build.auto_modules)
 
+    @api.multi
+    def get_modules_to_check_pylint(self):
+        self.ensure_one()
+        return (self.auto_modules or '').split(',')
+
     def job_30_run(self, cr, uid, build, lock_path, log_path):
         # adjust job_end to record an accurate job_20 job_time
         build._log('run', 'Start running build %s' % build.dest)
@@ -356,6 +361,7 @@ class runbot_build(orm.Model):
             v['result'] = "ko"
         build.write(v)
         build.github_status()
+        self.check_pylint_result(cr, uid, build)
 
         # run server
         cmd, mods = build.cmd()
@@ -567,7 +573,7 @@ def exp_rename_origin(''' % (build.dest, build.dest))
                                                   set(available_modules), explicit_modules)
             _logger.debug("modules_to_test for build %s: %s", build.dest, modules_to_test)
             _logger.debug("auto_modules for build %s: %s", build.dest, auto_modules)
-            build._log('checkout', 'modules to install: %s' % modules_to_test) 
+            build._log('checkout', 'modules to install: %s' % modules_to_test)
             build.write({'server_match': server_match,
                          'unsafe_modules': ','.join(unsafe_modules),
                          'auto_modules': ','.join(auto_modules),

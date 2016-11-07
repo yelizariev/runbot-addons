@@ -6,6 +6,7 @@
     'website': 'https://twitter.com/yelizariev',
     'depends': [
         'runbot',
+        'runbot_pylint',
     ],
     'data': [
         'views.xml',

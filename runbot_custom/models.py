@@ -1,3 +1,5 @@
+import contextlib
+import psycopg2
 import datetime
 import fileinput
 import os
@@ -37,6 +39,52 @@ def replace(filename, searchExp, replaceExp):
     except OSError:
         _logger.warning('Cannot replace in file %s', filename, exc_info=True)
 
+
+def exec_pg_environ():
+    """
+    Force the database PostgreSQL environment variables to the database
+    configuration of Odoo.
+
+    Note: On systems where pg_restore/pg_dump require an explicit password
+    (i.e.  on Windows where TCP sockets are used), it is necessary to pass the
+    postgres user password in the PGPASSWORD environment variable or in a
+    special .pgpass file.
+
+    See also http://www.postgresql.org/docs/8.4/static/libpq-envars.html
+    """
+    env = os.environ.copy()
+    db_user = os.getenv('DB_ENV_POSTGRES_USER') or os.getenv('RDS_USERNAME')
+    if db_user:
+        env['PGUSER'] = db_user
+    db_host = os.getenv('DB_PORT_5432_TCP_ADDR') or os.getenv('RDS_HOSTNAME')
+    if db_host:
+        env['PGHOST'] = db_host
+    db_port = os.getenv('DB_PORT_5432_TCP_PORT') or os.getenv('RDS_PORT')
+    if db_port:
+        env['PGPORT'] = db_port
+
+    db_password = os.getenv('DB_ENV_POSTGRES_PASSWORD') or os.getenv('RDS_PASSWORD')
+    if db_password:
+        env['PGPASSWORD'] = db_password
+
+    return env
+
+
+@contextlib.contextmanager
+def local_pgadmin_cursor():
+    env = exec_pg_environ()
+    cnx = None
+    try:
+        cnx = psycopg2.connect(database="postgres",
+                               user=env.get('PGUSER'),
+                               password=env.get('PGPASSWORD'),
+                               host=env.get('PGHOST'),
+                               port=env.get('PGPORT'),
+                               )
+        cnx.autocommit = True  # required for admin commands
+        yield cnx.cursor()
+    finally:
+        if cnx: cnx.close()
 
 class runbot_repo(orm.Model):
     _inherit = "runbot.repo"
@@ -210,6 +258,19 @@ def fix_long_line(s):
 class runbot_build(orm.Model):
     _inherit = "runbot.build"
 
+    def _local_pg_dropdb(self, cr, uid, dbname):
+        with local_pgadmin_cursor() as local_cr:
+            local_cr.execute('DROP DATABASE IF EXISTS "%s"' % dbname)
+        # cleanup filestore
+        datadir = appdirs.user_data_dir()
+        paths = [os.path.join(datadir, pn, 'filestore', dbname) for pn in 'OpenERP Odoo'.split()]
+        run(['rm', '-rf'] + paths)
+
+    def _local_pg_createdb(self, cr, uid, dbname):
+        self._local_pg_dropdb(cr, uid, dbname)
+        _logger.debug("createdb %s", dbname)
+        with local_pgadmin_cursor() as local_cr:
+            local_cr.execute("""CREATE DATABASE "%s" TEMPLATE template0 LC_COLLATE 'C' ENCODING 'unicode'""" % dbname)
 
     def job_01_check_branch_name(self, cr, uid, build, lock_path, log_path):
         branch = build.branch_id
@@ -821,7 +882,35 @@ def exp_rename_origin(''' % (build.dest, build.dest))
                 build._local_cleanup()
 
     def _local_cleanup(self, cr, uid, ids, context=None):
-        super(runbot_build, self)._local_cleanup(cr, uid, ids, context)
+        for build in self.browse(cr, uid, ids, context=context):
+            # Cleanup the *local* cluster
+            with local_pgadmin_cursor() as local_cr:
+                local_cr.execute("""
+                    SELECT datname
+                      FROM pg_database
+                     WHERE pg_get_userbyid(datdba) = current_user
+                       AND datname LIKE %s
+                """, [build.dest + '%'])
+                to_delete = local_cr.fetchall()
+            for db, in to_delete:
+                self._local_pg_dropdb(cr, uid, db)
+
+        # cleanup: find any build older than 7 days.
+        root = self.pool['runbot.repo'].root(cr, uid)
+        build_dir = os.path.join(root, 'build')
+        builds = os.listdir(build_dir)
+        cr.execute("""
+            SELECT dest
+              FROM runbot_build
+             WHERE dest IN %s
+               AND (state != 'done' OR job_end > (now() - interval '7 days'))
+        """, [tuple(builds)])
+        actives = set(b[0] for b in cr.fetchall())
+
+        for b in builds:
+            path = os.path.join(build_dir, b)
+            if b not in actives and os.path.isdir(path):
+                shutil.rmtree(path)
 
         # Clean heavy folders shortly after stopping
         # Basically, we need to keep logs only (for 7 days)
@@ -850,7 +939,6 @@ def exp_rename_origin(''' % (build.dest, build.dest))
                 if os.path.isdir(path):
                     _logger.debug('rmtree %s', path)
                     shutil.rmtree(path)
-
 
 
 class RunbotControllerCustom(RunbotController):

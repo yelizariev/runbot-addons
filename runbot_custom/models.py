@@ -769,6 +769,13 @@ def exp_rename_origin(''' % (build.dest, build.dest))
             if build.repo_id.server_wide_modules:
                 cmd += ['--load', build.repo_id.server_wide_modules]
 
+        env = exec_pg_environ()
+        cmd += ["--db_user", env.get('PGUSER'),
+                "--db_password", env.get('PGPASSWORD'),
+                "--db_host", env.get('PGHOST'),
+                "--db_port", env.get('PGPORT'),
+                ]
+
         if not modules:
             modules = 'base'
 

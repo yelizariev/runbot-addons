@@ -86,6 +86,7 @@ def local_pgadmin_cursor():
     finally:
         if cnx: cnx.close()
 
+
 class runbot_repo(orm.Model):
     _inherit = "runbot.repo"
 
@@ -259,6 +260,7 @@ class runbot_build(orm.Model):
     _inherit = "runbot.build"
 
     def _local_pg_dropdb(self, cr, uid, dbname):
+        openerp.service.db._drop_conn(cr, dbname)
         with local_pgadmin_cursor() as local_cr:
             local_cr.execute('DROP DATABASE IF EXISTS "%s"' % dbname)
         # cleanup filestore
@@ -803,11 +805,6 @@ def exp_rename_origin(''' % (build.dest, build.dest))
             cmd += ['--odoo-addons-path', addons_path]
 
         return cmd
-
-
-    def _local_pg_dropdb(self, cr, uid, dbname):
-        openerp.service.db._drop_conn(cr, dbname)
-        super(runbot_build, self)._local_pg_dropdb(cr, uid, dbname)
 
     def schedule(self, cr, uid, ids, context=None):
         jobs = self.list_jobs()

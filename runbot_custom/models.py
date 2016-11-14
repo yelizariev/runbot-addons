@@ -790,6 +790,7 @@ def exp_rename_origin(''' % (build.dest, build.dest))
             cmd = ['python', build.path('saas.py'),
                '--odoo-script=%s' % server_path,
                '--odoo-xmlrpc-port=%s' % build.port,
+               '--odoo-longpolling-port=%s' % (build.port + 1),
                '--local-xmlrpc-port=%s' % build.port,
                '--portal-db-name', '{suffix}---portal',
                '--server-db-name', '{suffix}---server',

@@ -399,7 +399,10 @@ class runbot_build(orm.Model):
     @api.multi
     def get_modules_to_check_pylint(self):
         self.ensure_one()
-        return (self.auto_modules or '').split(',')
+        if self.auto_modules:
+            return self.auto_modules.split(',')
+        else:
+            return False
 
     def job_30_run(self, cr, uid, build, lock_path, log_path):
         # adjust job_end to record an accurate job_20 job_time

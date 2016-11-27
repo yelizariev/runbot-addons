@@ -911,10 +911,16 @@ def exp_rename_origin(''' % (build.dest, build.dest))
             for db, in to_delete:
                 self._local_pg_dropdb(cr, uid, db)
 
+        self._local_cleanup_complete(cr, uid, ids, context=context)
+        self._local_cleanup_preliminary(cr, uid, ids, context=context)
+
+    def _local_cleanup_complete(self, cr, uid, ids, context=None):
         # cleanup: find any build older than 7 days.
         root = self.pool['runbot.repo'].root(cr, uid)
         build_dir = os.path.join(root, 'build')
         builds = os.listdir(build_dir)
+        if not builds:
+            return
         cr.execute("""
             SELECT dest
               FROM runbot_build
@@ -928,11 +934,14 @@ def exp_rename_origin(''' % (build.dest, build.dest))
             if b not in actives and os.path.isdir(path):
                 shutil.rmtree(path)
 
+    def _local_cleanup_preliminary(self, cr, uid, ids, context=None):
         # Clean heavy folders shortly after stopping
         # Basically, we need to keep logs only (for 7 days)
         root = self.pool['runbot.repo'].root(cr, uid)
         build_dir = os.path.join(root, 'build')
         builds = os.listdir(build_dir)
+        if not builds:
+            return
         cr.execute("""
             SELECT dest
               FROM runbot_build

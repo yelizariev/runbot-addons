@@ -416,7 +416,7 @@ class runbot_build(orm.Model):
         v = {
             'job_end': time.strftime(openerp.tools.DEFAULT_SERVER_DATETIME_FORMAT, log_time),
         }
-        if grep(log_all, ".modules.loading: Modules loaded.") or grep(log_all, "SaaS tests were passed successfully"):
+        if grep(log_all, ".modules.loading: Modules loaded."):
             if rfind(log_all, _re_error):
                 v['result'] = "ko"
             elif rfind(log_all, _re_warning):
@@ -425,6 +425,14 @@ class runbot_build(orm.Model):
                 v['result'] = "ok"
         else:
             v['result'] = "ko"
+
+        if build.branch_id.repo_id.is_saas:
+            if grep(log_all, "SaaS tests were passed successfully"):
+                build._log("job_30_run", "SaaS tests were passed successfully")
+            else:
+                v['result'] = "ko"
+                build._log("job_30_run", "SAAS ERROR. Something wrong with saas.py run. Check logs.")
+
         build.write(v)
         build.github_status()
         self.check_pylint_result(cr, uid, build)
